@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# Claude Code 로컬 설정 (개인 환경용 — 공유 필요 시 명시적으로 해제)
+.claude/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
