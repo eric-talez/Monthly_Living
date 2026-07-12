@@ -1,0 +1,22 @@
+// ── Traveler: 여행자 선호 프로필 ────────────────────────────────────
+
+model TravelerProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  travelPurposes     String[] // Category.slug 목록 (느슨 참조 — 설문/선호용)
+  preferredCountries String[] // ISO 3166-1 alpha-2
+  preferredCities    String[] // Destination.slug 목록
+  budgetMin          Int? // minor units
+  budgetMax          Int?
+  budgetCurrency     Currency @default(KRW)
+  preferredLanguages String[] // BCP-47
+  travelStyles       String[] // 선호 스타일 태그 (Zod enum으로 서비스 계층에서 검증)
+  groupSize          Int      @default(1)
+  hasChildren        Boolean  @default(false)
+  hasPet             Boolean  @default(false)
+  accessibilityNeeds String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

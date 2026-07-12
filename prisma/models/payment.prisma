@@ -1,0 +1,60 @@
+// ── Payment: 결제·webhook·참고 환율 ─────────────────────────────────
+// 결제 금액은 항상 실제 결제 통화의 스냅샷이며, 참고 환율 갱신의 영향을 받지 않는다.
+
+model Payment {
+  id                String        @id @default(cuid())
+  bookingId         String
+  provider          String // "mock" | "stripe"
+  providerPaymentId String // provider 범위 내 고유 ID
+  amount            Int // 실제 결제 금액 (minor units)
+  currency          Currency // 실제 결제 통화
+  status            PaymentStatus @default(PENDING)
+  failureReason     String?
+  refundedAmount    Int           @default(0) // CHECK 0 <= refundedAmount <= amount (1B-2)
+  paidAt            DateTime?     @db.Timestamptz(6)
+  cancelledAt       DateTime?     @db.Timestamptz(6)
+
+  // 참고 환산 표시에 사용한 환율의 근거 (계약 금액과 무관 — 표시용 기록)
+  referenceExchangeRateId String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  booking               Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  referenceExchangeRate ExchangeRate? @relation(fields: [referenceExchangeRateId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerPaymentId])
+  @@index([bookingId])
+  @@index([status])
+}
+
+// webhook idempotency의 단일 소스 — provider 범위 event ID로 중복 처리 차단
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  provider        String // "mock" | "stripe"
+  providerEventId String
+  eventType       String
+  payload         Json
+  receivedAt      DateTime  @default(now()) @db.Timestamptz(6)
+  processedAt     DateTime? @db.Timestamptz(6)
+  processingError String?
+
+  @@unique([provider, providerEventId])
+  @@index([provider, eventType, receivedAt])
+}
+
+// 참고 환율 (append-only). 갱신은 새 행 추가로만 하며 기존 행은 수정·삭제하지 않는다.
+model ExchangeRate {
+  id            String   @id @default(cuid())
+  baseCurrency  Currency
+  quoteCurrency Currency
+  rate          Decimal  @db.Decimal(18, 8) // CHECK rate > 0 (1B-2)
+  asOf          DateTime @db.Timestamptz(6) // 환율 기준 시각
+  source        String   @default("manual")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  payments Payment[]
+
+  @@unique([baseCurrency, quoteCurrency, asOf])
+  @@index([baseCurrency, quoteCurrency, asOf(sort: Desc)])
+}

@@ -5,3 +5,5 @@ build
 coverage
 pnpm-lock.yaml
 .storage
+src/generated
+prisma/migrations

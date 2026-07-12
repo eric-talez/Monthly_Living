@@ -1,0 +1,185 @@
+// ── Ops: 고객 지원·신고·분쟁·쿠폰·콘텐츠·설문·설정·감사 로그 ────────
+
+model SupportTicket {
+  id              String         @id @default(cuid())
+  userId          String
+  bookingId       String?
+  category        TicketCategory
+  subject         String
+  description     String
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(NORMAL)
+  assignedAdminId String?
+  resolvedAt      DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  user          User     @relation("TicketAuthor", fields: [userId], references: [id], onDelete: Restrict)
+  booking       Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  assignedAdmin User?    @relation("TicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, priority])
+  @@index([userId])
+}
+
+// 리뷰·메시지·사용자·프로그램 신고 — 대상은 (targetType, targetId) 느슨 참조.
+// FK 무결성은 서비스 레이어에서 검증하며, 대상 삭제 후에도 신고 기록은 보존한다.
+model Report {
+  id             String           @id @default(cuid())
+  reporterId     String
+  targetType     ReportTargetType
+  targetId       String
+  reason         String
+  status         ReportStatus     @default(OPEN)
+  resolvedById   String?
+  resolvedAt     DateTime?        @db.Timestamptz(6)
+  resolutionNote String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+
+  reporter   User  @relation("Reporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  resolvedBy User? @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId])
+  @@index([status])
+}
+
+model Dispute {
+  id           String        @id @default(cuid())
+  bookingId    String
+  raisedById   String
+  reason       String
+  status       DisputeStatus @default(OPEN)
+  resolution   String?
+  resolvedById String?
+  resolvedAt   DateTime?     @db.Timestamptz(6)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
+
+  booking    Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  raisedBy   User    @relation("DisputeRaiser", fields: [raisedById], references: [id], onDelete: Restrict)
+  resolvedBy User?   @relation("DisputeResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([bookingId])
+}
+
+model Coupon {
+  id              String     @id @default(cuid())
+  code            String     @unique
+  type            CouponType
+  percentOff      Int? // PERCENTAGE일 때 1~100 (CHECK 1B-2)
+  amountOff       Int? // FIXED_AMOUNT일 때 minor units (CHECK > 0, 1B-2)
+  currency        Currency? // FIXED_AMOUNT일 때 필수 (CHECK 상호배타, 1B-2)
+  maxRedemptions  Int?
+  redemptionCount Int        @default(0)
+  perUserLimit    Int        @default(1)
+  minSubtotal     Int?
+  validFrom       DateTime   @db.Timestamptz(6)
+  validUntil      DateTime   @db.Timestamptz(6) // CHECK validUntil > validFrom (1B-2)
+  active          Boolean    @default(true)
+  createdById     String?
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(6)
+
+  createdBy User? @relation("CouponCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  redemptions CouponRedemption[]
+  quotes      BookingQuote[]
+
+  @@index([active, validUntil])
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  userId    String
+  bookingId String   @unique // 예약 확정 시점에 기록
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@index([couponId, userId])
+}
+
+// 한달살기 가이드·블로그 (관리자 작성 콘텐츠)
+model GuidePost {
+  id            String    @id @default(cuid())
+  slug          String    @unique
+  titleKo       String
+  titleEn       String
+  excerptKo     String?
+  excerptEn     String?
+  contentKo     String
+  contentEn     String
+  coverImageUrl String?
+  destinationId String?
+  categoryId    String?
+  authorId      String?
+  publishedAt   DateTime? @db.Timestamptz(6) // null이면 draft
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  destination Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author      User?        @relation("GuideAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([publishedAt])
+}
+
+// 맞춤 설문 응답 + 추천 결과 저장
+model MatchRequest {
+  id                 String    @id @default(cuid())
+  userId             String? // 비로그인 설문은 null, 저장 시 로그인 유도 후 연결
+  countryCode        String? // null = "아직 결정하지 못함"
+  destinationId      String?
+  purposes           String[] // Category.slug 목록 (복수 선택)
+  departureDateLocal String? // "YYYY-MM-DD" — 사용자가 고른 달력 날짜 (timezone 미정 단계)
+  durationDays       Int?
+  adultsCount        Int       @default(1)
+  childrenCount      Int       @default(0)
+  hasPet             Boolean   @default(false)
+  budgetMin          Int?
+  budgetMax          Int?
+  budgetCurrency     Currency  @default(KRW)
+  budgetScope        String? // lodging_included | lodging_excluded | program_only (Zod 검증)
+  stylePreferences   String[]
+  resultSnapshot     Json? // 추천 결과 스냅샷 (점수·이유 포함)
+  savedAt            DateTime? @db.Timestamptz(6) // 사용자가 명시적으로 저장한 시각
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  destination Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// 플랫폼 운영 설정 (수수료율 등) — key-value
+model PlatformSetting {
+  key         String   @id // 예: "service_fee_bps", "tax_rate_bps"
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy User? @relation("SettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+// 관리자 작업 감사 로그 (append-only)
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String // 예: "expert.approve", "booking.refund"
+  entityType String
+  entityId   String?
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([adminId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+}

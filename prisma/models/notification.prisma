@@ -1,0 +1,37 @@
+// ── Notification: 인앱 알림 + 채널별 발송 기록 ──────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  linkUrl   String? // 앱 내부 경로
+  readAt    DateTime?        @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+}
+
+// 채널별 발송 시도·성공/실패 기록 (이메일 재시도의 근거)
+model NotificationDelivery {
+  id             String              @id @default(cuid())
+  notificationId String
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(PENDING)
+  attemptCount   Int                 @default(0)
+  lastAttemptAt  DateTime?           @db.Timestamptz(6)
+  sentAt         DateTime?           @db.Timestamptz(6)
+  errorMessage   String?
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastAttemptAt])
+  @@index([notificationId])
+}

@@ -23,9 +23,13 @@
 
 ```bash
 pnpm install
-cp .env.example .env.local   # 값은 파일 내 안내 참고 (Phase 1A는 기본값으로 동작)
+cp .env.example .env.local   # 값은 파일 내 안내 참고 (기본값으로도 동작)
+pnpm db:generate             # Prisma Client 생성 (src/generated/ — git 미추적)
 pnpm dev                     # http://localhost:3000
 ```
+
+> DB migration·seed는 Phase 1B-2에서 추가됩니다. 현재는 스키마 계약(Prisma schema)만
+> 존재하며 실제 데이터베이스 연결 없이 개발 서버·빌드가 동작합니다.
 
 ### 품질 검증 명령
 
@@ -34,17 +38,25 @@ pnpm lint          # ESLint
 pnpm typecheck     # tsc --noEmit
 pnpm build         # production build
 pnpm format:check  # Prettier 검사 (자동 수정: pnpm format)
+pnpm db:format     # Prisma schema 포맷
+pnpm db:validate   # Prisma schema 검증
+pnpm db:generate   # Prisma Client 생성
 ```
 
 ## 프로젝트 구조
 
 ```
+prisma/
+├── schema.prisma      # datasource·generator (연결 URL은 prisma.config.ts)
+└── models/*.prisma    # 도메인별 모델·enum (multi-file schema)
+docs/decisions/        # 설계 결정 기록 (DB 제약, 이메일 정책, 잠금 프로토콜 등)
 src/
 ├── app/               # 라우트 (얇게 유지 — 비즈니스 로직 금지)
 │   └── [locale]/      # ko(기본, prefix 없음) / en
 ├── modules/           # 도메인 서비스 레이어 (비즈니스 로직·권한 검증)
 ├── adapters/          # 외부 서비스 어댑터 (payment/email/storage/rate-limit)
-├── lib/               # env 검증, AppError, API 응답 규격, 공용 유틸
+├── lib/               # env 검증, AppError, API 응답 규격, prisma client
+├── generated/         # Prisma Client 생성물 (git 미추적 — pnpm db:generate)
 ├── components/        # layout/ + ui/ 공용 컴포넌트
 ├── i18n/              # next-intl 라우팅·요청 설정
 ├── messages/          # ko.json / en.json — UI 문자열 하드코딩 금지

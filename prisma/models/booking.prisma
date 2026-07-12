@@ -1,0 +1,120 @@
+// ── Booking: 견적 고정 → 예약(계약 스냅샷) → slot 연결 ──────────────
+// Booking은 예약 당시 계약 내용을 스냅샷으로 보존한다.
+// 이후 Program·환율이 변경되어도 예약의 계약 내용과 금액은 불변이다.
+
+model BookingQuote {
+  id               String      @id @default(cuid())
+  travelerId       String
+  programId        String
+  currency         Currency
+  unitPrice        Int // 1인 기준 가격 스냅샷 (minor units)
+  participantCount Int
+  subtotal         Int
+  serviceFee       Int
+  taxes            Int
+  discount         Int         @default(0)
+  total            Int
+  feeRateBps       Int // 견적 시점 플랫폼 수수료율 (basis points)
+  couponId         String?
+  status           QuoteStatus @default(ACTIVE)
+  expiresAt        DateTime    @db.Timestamptz(6) // CHECK expiresAt > createdAt (1B-2)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
+
+  traveler User    @relation(fields: [travelerId], references: [id], onDelete: Cascade)
+  program  Program @relation(fields: [programId], references: [id], onDelete: Restrict)
+  coupon   Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+
+  booking Booking?
+
+  @@index([travelerId, status])
+  @@index([expiresAt, status])
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  bookingNumber String        @unique // 사람이 읽는 예약번호 (예: HS-2026-000123)
+  travelerId    String
+  expertId      String
+  programId     String
+  quoteId       String        @unique // 결제는 항상 고정된 견적 기준
+  bookingType   BookingType
+  status        BookingStatus @default(PENDING)
+
+  startsAt         DateTime @db.Timestamptz(6) // UTC (첫 슬롯 시작)
+  endsAt           DateTime @db.Timestamptz(6) // UTC (마지막 슬롯 종료)
+  timezoneSnapshot String // 예약 당시 프로그램 지역 IANA timezone
+  participantCount Int
+
+  // ── 계약 스냅샷 (Program 변경과 무관하게 불변) ──
+  programTitleSnapshot       String
+  expertDisplayNameSnapshot  String
+  meetingPointSnapshot       String?
+  includesSnapshot           String[]
+  cancellationPolicySnapshot String
+  contractSnapshot           Json // 전체 상세 스냅샷 (버전 필드 포함)
+
+  // ── 금액 스냅샷 (quote에서 복사되어 고정) ──
+  currency   Currency
+  subtotal   Int
+  serviceFee Int
+  taxes      Int
+  discount   Int      @default(0)
+  total      Int
+
+  specialRequest     String?
+  cancellationReason String?
+  confirmedAt        DateTime? @db.Timestamptz(6)
+  cancelledAt        DateTime? @db.Timestamptz(6)
+  completedAt        DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  traveler User          @relation(fields: [travelerId], references: [id], onDelete: Restrict)
+  expert   ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Restrict)
+  program  Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+  quote    BookingQuote  @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+
+  slots            BookingSlot[]
+  participants     BookingParticipant[]
+  payments         Payment[]
+  payout           Payout?
+  review           Review?
+  disputes         Dispute[]
+  supportTickets   SupportTicket[]
+  conversations    Conversation[]
+  couponRedemption CouponRedemption?
+
+  @@index([travelerId, status])
+  @@index([expertId, status])
+  @@index([programId])
+  @@index([status, startsAt])
+}
+
+// 한 예약이 여러 concrete slot을 확보할 수 있다 (다회차 프로그램).
+// 예약 transaction은 slot ID 오름차순 정렬 후 동일 순서로 FOR UPDATE 잠금을 획득한다.
+model BookingSlot {
+  id                 String   @id @default(cuid())
+  bookingId          String
+  availabilitySlotId String
+  participantCount   Int // 해당 슬롯에서 차지하는 인원 (capacity 검증 단위)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+
+  booking Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  slot    AvailabilitySlot @relation(fields: [availabilitySlotId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, availabilitySlotId])
+  @@index([availabilitySlotId])
+}
+
+model BookingParticipant {
+  id        String          @id @default(cuid())
+  bookingId String
+  type      ParticipantType
+  name      String?
+  note      String? // 알레르기·요청 사항 등
+  createdAt DateTime        @default(now()) @db.Timestamptz(6)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}

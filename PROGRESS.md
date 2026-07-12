@@ -9,7 +9,8 @@
 | Phase | 내용                                                                                    | 상태                 |
 | ----- | --------------------------------------------------------------------------------------- | -------------------- |
 | 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃 | ✅ 완료 (2026-07-11) |
-| 1B    | Database Foundation — Prisma 전체 스키마, migration, seed                               | ⬜ 미착수            |
+| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                       | ✅ 완료 (2026-07-11) |
+| 1B-2  | Migration & Seed — initial migration + CHECK 제약, seed, docker-compose                 | ⬜ 미착수            |
 | 1C    | Authentication — Auth.js v5, 이메일 인증, rate limit                                    | ⬜ 미착수            |
 | 1D    | Verification — Phase 1 통합 점검, CI                                                    | ⬜ 미착수            |
 | 2     | Public Marketplace                                                                      | ⬜ 미착수            |
@@ -75,6 +76,32 @@ seed 스크립트(도시 9, 카테고리 15, 테스트 계정 4종, 전문가 ~2
 
 **정리**: `.claude/launch.json` 추적 제거 + `.claude/` gitignore 추가
 (pnpm dev 한 줄을 감싼 도구 전용 설정 — README로 충분).
+
+## Phase 1B-1 기록 (2026-07-11) — Schema Contract
+
+**구현 내용**
+
+- Prisma 7.8.0 (+ @prisma/client, @prisma/adapter-pg, pg, bcryptjs / dev: tsx, dotenv, @types/pg)
+- `"type": "module"` 전환 (Prisma 7 ESM) — Next/ESLint/Prettier/빌드 정상 동작 확인
+- multi-file schema: `prisma/schema.prisma`(datasource·generator) + `prisma/models/*.prisma` 13개
+  — 모델 41개, enum 29종. 연결 URL은 Prisma 7 규칙에 따라 `prisma.config.ts`로 이동
+  (schema 내 `url = env(...)`은 7.8에서 검증 오류)
+- Prisma Client 명시적 output: `src/generated/prisma` (git·lint·prettier 제외, `pnpm db:generate`)
+- `src/lib/prisma.ts` — PrismaPg driver adapter + global singleton
+- 설계 결정 문서: database-constraints(1B-2 CHECK·NULLS NOT DISTINCT 목록),
+  email-reuse-policy, booking-slot-locking(잠금 순서 프로토콜), authjs-session-strategy
+  (Account 포함·Session 미포함·EmailVerificationToken 명명)
+- 스크립트: `db:format` / `db:validate` / `db:generate` (migrate/seed 스크립트는 1B-2에서 추가)
+
+**하지 않은 것 (범위 준수)**: migration 생성·적용 없음, seed 없음, 실제 DB 변경 없음
+(`psql -lqt`에 handalsalgi DB 미존재 확인)
+
+**검증 결과 (2026-07-11)**: prisma format/validate/generate ✅,
+format:check·lint·typecheck·build 모두 exit 0 ✅
+
+**다음 (Phase 1B-2)**: 스키마 검토 승인 후 initial migration + CHECK 제약 SQL,
+seed(도시 9·카테고리 15·계정 4종·전문가 ~20·프로그램 ~40), docker-compose(dev+test DB init),
+안전장치 있는 test DB reset 스크립트
 
 ## 알려진 문제
 

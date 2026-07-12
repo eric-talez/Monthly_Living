@@ -1,0 +1,44 @@
+// ── Messaging: 대화·메시지 ──────────────────────────────────────────
+
+model Conversation {
+  id                  String    @id @default(cuid())
+  travelerId          String
+  expertId            String
+  bookingId           String? // 예약과 연결된 대화 (null이면 일반 문의)
+  lastMessageAt       DateTime? @db.Timestamptz(6)
+  travelerUnreadCount Int       @default(0)
+  expertUnreadCount   Int       @default(0)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
+
+  traveler User          @relation(fields: [travelerId], references: [id], onDelete: Restrict)
+  expert   ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Restrict)
+  booking  Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  messages Message[]
+
+  // bookingId NULL(일반 문의)은 traveler-expert 쌍당 1건만 허용해야 하나
+  // PG 기본 null-distinct로는 강제 불가 — 1B-2에서 partial unique index 추가
+  // (docs/decisions/database-constraints.md)
+  @@unique([travelerId, expertId, bookingId])
+  @@index([travelerId, lastMessageAt(sort: Desc)])
+  @@index([expertId, lastMessageAt(sort: Desc)])
+}
+
+model Message {
+  id                 String    @id @default(cuid())
+  conversationId     String
+  senderId           String
+  content            String
+  attachmentKey      String? // 비공개 StorageProvider key (공개 URL 저장 금지)
+  attachmentName     String?
+  attachmentMimeType String?
+  readAt             DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
