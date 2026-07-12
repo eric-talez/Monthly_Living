@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+
+/*
+ * 디자인 토큰 — Premium / Calm / Editorial / Warm
+ * 크림 화이트 배경, 웜 차콜 텍스트, 세이지·딥 네이비·테라코타 포인트.
+ * 과도한 그림자·둥근 모서리·그라데이션은 사용하지 않는다.
+ */
+:root {
+  --background: #faf8f3;
+  --surface: #fffdf9;
+  --foreground: #29251c;
+  --muted: #f1ece1;
+  --muted-foreground: #6f6857;
+  --border: #e5dfd1;
+
+  --sage: #6d7b62;
+  --sage-strong: #55624c;
+  --navy: #22384a;
+  --navy-strong: #182a39;
+  --terracotta: #b96a4b;
+  --terracotta-strong: #9e5539;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+
+  --color-sage: var(--sage);
+  --color-sage-strong: var(--sage-strong);
+  --color-navy: var(--navy);
+  --color-navy-strong: var(--navy-strong);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-strong: var(--terracotta-strong);
+
+  --font-sans: var(--font-noto-sans-kr), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif-kr), ui-serif, Georgia, serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  /* 한국어 단어 중간 줄바꿈 방지 (긴 URL 등은 overflow-wrap으로 처리) */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* 접근성: 키보드 탐색 시 명확한 focus 상태 */
+:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+
+/* 접근성: reduced motion 선호 사용자 지원 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

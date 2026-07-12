@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "title": "A Month of Living — Beyond travel, a new way of life",
+    "description": "Meet experts and programs tailored to your goals in Jeju, Thailand, and Vietnam."
+  },
+  "layout": {
+    "header": {
+      "brand": "한달살기",
+      "homeLink": "Go to home"
+    },
+    "footer": {
+      "description": "A premium platform for designing your month-long stay in Jeju, Thailand, and Vietnam around your goals",
+      "status": "We are currently preparing for launch.",
+      "copyright": "© {year} 한달살기. All rights reserved."
+    }
+  },
+  "localeSwitcher": {
+    "label": "Select language",
+    "locale": "{locale, select, ko {한국어} en {English} other {Unknown}}"
+  },
+  "home": {
+    "badge": "Coming soon",
+    "title": "Beyond travel — a month that becomes a new way of life.",
+    "subtitle": "Meet experts and programs tailored to your goals in Jeju, Thailand, and Vietnam.",
+    "regionsHeading": "Regions in preparation",
+    "regions": {
+      "jeju": {
+        "name": "Jeju",
+        "country": "South Korea",
+        "cities": "All of Jeju Island"
+      },
+      "thailand": {
+        "name": "Thailand",
+        "country": "Thailand",
+        "cities": "Bangkok · Chiang Mai · Phuket · Koh Samui"
+      },
+      "vietnam": {
+        "name": "Vietnam",
+        "country": "Vietnam",
+        "cities": "Da Nang · Ho Chi Minh City · Hanoi · Nha Trang"
+      }
+    },
+    "notice": "Fitness, yoga, golf, surfing, remote work, language learning, and wellness — we are building a service that connects you with local experts and programs that fit your goals."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The address may be incorrect, or the page may have been moved or deleted.",
+    "backHome": "Back to home"
+  }
+}

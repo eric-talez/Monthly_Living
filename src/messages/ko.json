@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "title": "한달살기 — 한 달이 여행을 넘어, 새로운 삶이 되도록",
+    "description": "제주, 태국, 베트남에서 당신의 목적에 맞는 전문가와 프로그램을 만나보세요."
+  },
+  "layout": {
+    "header": {
+      "brand": "한달살기",
+      "homeLink": "홈으로 이동"
+    },
+    "footer": {
+      "description": "제주, 태국, 베트남에서의 한달살기를 목적에 맞게 설계하는 프리미엄 플랫폼",
+      "status": "현재 서비스 오픈을 준비하고 있습니다.",
+      "copyright": "© {year} 한달살기. All rights reserved."
+    }
+  },
+  "localeSwitcher": {
+    "label": "언어 선택",
+    "locale": "{locale, select, ko {한국어} en {English} other {알 수 없음}}"
+  },
+  "home": {
+    "badge": "서비스 준비 중",
+    "title": "한 달이 여행을 넘어, 새로운 삶이 되도록.",
+    "subtitle": "제주, 태국, 베트남에서 당신의 목적에 맞는 전문가와 프로그램을 만나보세요.",
+    "regionsHeading": "준비 중인 지역",
+    "regions": {
+      "jeju": {
+        "name": "제주",
+        "country": "대한민국",
+        "cities": "제주 전역"
+      },
+      "thailand": {
+        "name": "태국",
+        "country": "Thailand",
+        "cities": "방콕 · 치앙마이 · 푸껫 · 코사무이"
+      },
+      "vietnam": {
+        "name": "베트남",
+        "country": "Vietnam",
+        "cities": "다낭 · 호찌민 · 하노이 · 나트랑"
+      }
+    },
+    "notice": "운동, 요가, 골프, 서핑, 원격근무, 언어 공부, 힐링까지 — 목적에 맞는 현지 전문가와 프로그램을 연결하는 서비스를 만들고 있습니다."
+  },
+  "notFound": {
+    "title": "페이지를 찾을 수 없습니다",
+    "description": "주소가 잘못되었거나, 페이지가 이동 또는 삭제되었을 수 있습니다.",
+    "backHome": "홈으로 돌아가기"
+  }
+}
