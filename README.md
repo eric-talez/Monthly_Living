@@ -19,17 +19,24 @@
 
 ## 로컬 개발 실행
 
-요구사항: Node.js 22+, pnpm 11+
+요구사항: Node.js 22+, pnpm 11+, **PostgreSQL 15 이상**
+(`UNIQUE ... NULLS NOT DISTINCT` 사용으로 PostgreSQL 15 미만 미지원 — 로컬 검증 버전은 16)
+
+clean checkout 설치 순서:
 
 ```bash
 pnpm install
-cp .env.example .env.local   # 값은 파일 내 안내 참고 (기본값으로도 동작)
+cp .env.example .env.local   # DATABASE_URL 필수 — fallback 없음 (fail-closed)
 pnpm db:generate             # Prisma Client 생성 (src/generated/ — git 미추적)
+pnpm lint
+pnpm typecheck
+pnpm build
 pnpm dev                     # http://localhost:3000
 ```
 
-> DB migration·seed는 Phase 1B-2에서 추가됩니다. 현재는 스키마 계약(Prisma schema)만
-> 존재하며 실제 데이터베이스 연결 없이 개발 서버·빌드가 동작합니다.
+> DB migration 적용·seed는 Phase 1B-2B에서 추가됩니다.
+> DB reset은 반드시 안전장치가 있는 `pnpm db:reset`(dev) / `pnpm db:reset:test`(test)로만
+> 실행합니다 (production·비 localhost·`_test` 미포함 test DB 이름은 거부).
 
 ### 품질 검증 명령
 

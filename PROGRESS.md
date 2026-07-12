@@ -6,20 +6,21 @@
 
 ## Phase 현황
 
-| Phase | 내용                                                                                    | 상태                 |
-| ----- | --------------------------------------------------------------------------------------- | -------------------- |
-| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃 | ✅ 완료 (2026-07-11) |
-| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                       | ✅ 완료 (2026-07-11) |
-| 1B-2  | Migration & Seed — initial migration + CHECK 제약, seed, docker-compose                 | ⬜ 미착수            |
-| 1C    | Authentication — Auth.js v5, 이메일 인증, rate limit                                    | ⬜ 미착수            |
-| 1D    | Verification — Phase 1 통합 점검, CI                                                    | ⬜ 미착수            |
-| 2     | Public Marketplace                                                                      | ⬜ 미착수            |
-| 3     | Recommendation                                                                          | ⬜ 미착수            |
-| 4     | Expert Platform                                                                         | ⬜ 미착수            |
-| 5     | Booking & Payment                                                                       | ⬜ 미착수            |
-| 6     | Communication                                                                           | ⬜ 미착수            |
-| 7     | Admin                                                                                   | ⬜ 미착수            |
-| 8     | Quality & Deployment                                                                    | ⬜ 미착수            |
+| Phase | 내용                                                                                      | 상태                 |
+| ----- | ----------------------------------------------------------------------------------------- | -------------------- |
+| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃   | ✅ 완료 (2026-07-11) |
+| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                         | ✅ 완료 (2026-07-11) |
+| 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12) |
+| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ⬜ 미착수            |
+| 1C    | Authentication — Auth.js v5, 이메일 인증, rate limit                                      | ⬜ 미착수            |
+| 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수            |
+| 2     | Public Marketplace                                                                        | ⬜ 미착수            |
+| 3     | Recommendation                                                                            | ⬜ 미착수            |
+| 4     | Expert Platform                                                                           | ⬜ 미착수            |
+| 5     | Booking & Payment                                                                         | ⬜ 미착수            |
+| 6     | Communication                                                                             | ⬜ 미착수            |
+| 7     | Admin                                                                                     | ⬜ 미착수            |
+| 8     | Quality & Deployment                                                                      | ⬜ 미착수            |
 
 ## Phase 1A 기록 (2026-07-11)
 
@@ -103,8 +104,38 @@ format:check·lint·typecheck·build 모두 exit 0 ✅
 seed(도시 9·카테고리 15·계정 4종·전문가 ~20·프로그램 ~40), docker-compose(dev+test DB init),
 안전장치 있는 test DB reset 스크립트
 
+## Phase 1B-2A 기록 (2026-07-12) — Migration SQL Draft
+
+**최소 수정 (사용자 지시 6건)**: DATABASE_URL fail-closed(fallback 전면 제거,
+env는 `server-only` 가드), guarded reset 스크립트(scripts/db-reset.ts — production/비
+localhost/`_test` 미포함/파싱 실패 거부, Prisma 7 reset의 자동 generate+seed 전제로
+중복 호출 없음), PostgreSQL 15+ 명시(README·constraints 문서), constraint 문서 보강
+(요일 범위·HH:mm 형식·자정 미초과 MVP 정책 등), schema key audit 12항목 확인(수정 불필요),
+clean checkout 순서 문서화.
+
+**1B-2A 산출물**: PostgreSQL 16.13 실측, 빈 DB `handalsalgi_dev`/`handalsalgi_test` 생성,
+docker-compose.yml + docker/postgres/init/01-create-test-db.sql,
+`prisma migrate dev --name init --create-only`로 draft 생성
+(`prisma/migrations/20260712034631_init/` — 적용 안 함), custom SQL 수동 추가:
+CHECK 38건 + AvailabilitySlot unique NULLS NOT DISTINCT 재생성 + Conversation partial
+unique. CHECK의 NULL 통과 시맨틱 대응으로 쿠폰 타입 필드에 IS NOT NULL 명시.
+
+**투명성 기록**: `--create-only` 실행이 dev DB에 빈 `_prisma_migrations` 테이블을
+생성함(Prisma의 문서화된 bookkeeping 동작, 기록 0행 = 어떤 migration도 미적용).
+확인 후 DROP하여 dev DB를 완전 초기 상태로 복구. application 테이블 생성 0건,
+test DB 무변경. 최종 재확인: 두 DB 모두 public 테이블 0개.
+
+**검증**: db:format/validate/generate, format:check, lint, typecheck, build 모두 exit 0.
+migration은 적용되지 않았고 seed는 실행되지 않음.
+
+**다음 (1B-2B)**: migration.sql 검토 승인 후 dev DB 적용 → seed 작성·실행 →
+reset 왕복 → CHECK 위반 spot test.
+
 ## 알려진 문제
 
+- **CI 순서 제약**: `src/generated/`(Prisma Client)는 git 미추적이므로 CI에서
+  `pnpm db:generate`가 **typecheck·build보다 먼저** 실행되어야 한다
+  (`pnpm install → db:generate → lint → typecheck → build`). Phase 1D CI 워크플로에 반영할 것.
 - **Google Fonts 빌드 시 네트워크 의존**: `next/font/google`이 빌드 시점에
   Noto Sans KR/Noto Serif KR을 내려받아 self-host함(런타임 의존 없음).
   네트워크 없는 CI/오프라인 빌드는 실패 위험 → 향후 CI 캐시 또는

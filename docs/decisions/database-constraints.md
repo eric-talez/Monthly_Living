@@ -1,27 +1,36 @@
 # DB 제약: Prisma로 표현 불가 — Phase 1B-2 migration SQL에서 추가
 
 > Phase 1B-1은 스키마 계약만 정의하며 migration을 적용하지 않는다.
-> 아래 제약은 initial migration 생성 시(1B-2) SQL로 직접 추가하고,
+> 아래 제약은 initial migration 생성 시(1B-2A draft) SQL로 직접 추가하고,
 > 이 문서와 migration 파일을 상호 참조로 유지한다.
+
+**PostgreSQL 최소 버전: 15 이상 필수.** `UNIQUE ... NULLS NOT DISTINCT`(§2)를
+사용하므로 PostgreSQL 15 미만은 지원하지 않는다. 로컬 검증 버전은 PostgreSQL 16.
+
+**적용 대상 migration**: `prisma/migrations/20260712034631_init/migration.sql`
+하단 "Custom SQL" 섹션 (1B-2A에서 draft 작성, 1B-2B에서 적용 예정).
+CHECK는 NULL 결과 시 통과하므로 타입별 필수 필드에는 `IS NOT NULL`을 명시했다.
 
 ## 1. CHECK constraints
 
-| 테이블                             | 제약                                                                                                                                                                                                                                                                                           |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AvailabilityRule`                 | `capacity > 0`, `slotDurationMinutes IS NULL OR slotDurationMinutes > 0`                                                                                                                                                                                                                       |
-| `AvailabilitySlot`                 | `capacity > 0`, `reservedCount >= 0 AND reservedCount <= capacity`, `endsAt > startsAt`                                                                                                                                                                                                        |
-| `Program`                          | `basePrice >= 0`, `durationDays > 0`, `sessionCount > 0`, `maxParticipants > 0`                                                                                                                                                                                                                |
-| `BookingQuote`                     | `unitPrice >= 0`, `subtotal >= 0`, `serviceFee >= 0`, `taxes >= 0`, `discount >= 0`, `total >= 0`, `participantCount > 0`, `expiresAt > createdAt`                                                                                                                                             |
-| `Booking`                          | `subtotal >= 0`, `serviceFee >= 0`, `taxes >= 0`, `discount >= 0`, `total >= 0`, `participantCount > 0`, `endsAt > startsAt`                                                                                                                                                                   |
-| `BookingSlot`                      | `participantCount > 0`                                                                                                                                                                                                                                                                         |
-| `Payment`                          | `amount >= 0`, `refundedAmount >= 0 AND refundedAmount <= amount`                                                                                                                                                                                                                              |
-| `Payout`                           | `grossAmount >= 0`, `platformFee >= 0`, `payoutAmount >= 0`                                                                                                                                                                                                                                    |
-| `PayoutAdjustment`                 | `amount <> 0` — **의도적으로 음수 허용** (차감 조정), 0만 금지                                                                                                                                                                                                                                 |
-| `Review`                           | `rating BETWEEN 1 AND 5`                                                                                                                                                                                                                                                                       |
-| `Coupon`                           | `validUntil > validFrom`, `(type = 'PERCENTAGE' AND percentOff BETWEEN 1 AND 100 AND amountOff IS NULL AND currency IS NULL) OR (type = 'FIXED_AMOUNT' AND amountOff > 0 AND currency IS NOT NULL AND percentOff IS NULL)`, `maxRedemptions IS NULL OR maxRedemptions > 0`, `perUserLimit > 0` |
-| `ExchangeRate`                     | `rate > 0`                                                                                                                                                                                                                                                                                     |
-| `ExpertProfile`                    | `responseRate IS NULL OR (responseRate BETWEEN 0 AND 100)`, `yearsOfExperience >= 0`                                                                                                                                                                                                           |
-| `TravelerProfile` / `MatchRequest` | `budgetMin IS NULL OR budgetMin >= 0`, `budgetMax IS NULL OR budgetMax >= 0`, `(budgetMin IS NULL OR budgetMax IS NULL) OR budgetMax >= budgetMin`                                                                                                                                             |
+| 테이블                             | 제약                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AvailabilityRule`                 | `capacity > 0`, `slotDurationMinutes IS NULL OR slotDurationMinutes > 0`, `daysOfWeek <@ ARRAY[0,1,2,3,4,5,6]` (요일 0~6 범위), `startTimeLocal`/`endTimeLocal`은 `^([01][0-9]\|2[0-3]):[0-5][0-9]$` 고정 HH:mm 형식, `endTimeLocal > startTimeLocal` (고정폭 HH:mm → 사전순 = 시간순)                                 |
+| `AvailabilitySlot`                 | `capacity > 0`, `reservedCount >= 0 AND reservedCount <= capacity`, `endsAt > startsAt`                                                                                                                                                                                                                                |
+| `Program`                          | `basePrice >= 0`, `durationDays > 0`, `sessionCount > 0`, `maxParticipants > 0`                                                                                                                                                                                                                                        |
+| `BookingQuote`                     | `unitPrice >= 0`, `subtotal >= 0`, `serviceFee >= 0`, `taxes >= 0`, `discount >= 0`, `total >= 0`, `participantCount > 0`, `expiresAt > createdAt`                                                                                                                                                                     |
+| `Booking`                          | `subtotal >= 0`, `serviceFee >= 0`, `taxes >= 0`, `discount >= 0`, `total >= 0`, `participantCount > 0`, `endsAt > startsAt`                                                                                                                                                                                           |
+| `BookingSlot`                      | `participantCount > 0`                                                                                                                                                                                                                                                                                                 |
+| `Payment`                          | `amount >= 0`, `refundedAmount >= 0 AND refundedAmount <= amount`                                                                                                                                                                                                                                                      |
+| `Payout`                           | `grossAmount >= 0`, `platformFee >= 0`, `payoutAmount >= 0`                                                                                                                                                                                                                                                            |
+| `PayoutAdjustment`                 | `amount <> 0` — **의도적으로 음수 허용** (차감 조정), 0만 금지                                                                                                                                                                                                                                                         |
+| `Review`                           | `rating BETWEEN 1 AND 5`                                                                                                                                                                                                                                                                                               |
+| `Coupon`                           | `validUntil > validFrom`, `(type = 'PERCENTAGE' AND percentOff BETWEEN 1 AND 100 AND amountOff IS NULL AND currency IS NULL) OR (type = 'FIXED_AMOUNT' AND amountOff > 0 AND currency IS NOT NULL AND percentOff IS NULL)`, `maxRedemptions IS NULL OR maxRedemptions > 0`, `perUserLimit > 0`, `redemptionCount >= 0` |
+| `TravelerProfile`                  | `groupSize > 0`                                                                                                                                                                                                                                                                                                        |
+| `MatchRequest` (참가자 수량)       | `adultsCount >= 1`, `childrenCount >= 0`, `durationDays IS NULL OR durationDays > 0`                                                                                                                                                                                                                                   |
+| `ExchangeRate`                     | `rate > 0`                                                                                                                                                                                                                                                                                                             |
+| `ExpertProfile`                    | `responseRate IS NULL OR (responseRate BETWEEN 0 AND 100)`, `yearsOfExperience >= 0`                                                                                                                                                                                                                                   |
+| `TravelerProfile` / `MatchRequest` | `budgetMin IS NULL OR budgetMin >= 0`, `budgetMax IS NULL OR budgetMax >= 0`, `(budgetMin IS NULL OR budgetMax IS NULL) OR budgetMax >= budgetMin`                                                                                                                                                                     |
 
 ## 2. NULL을 포함하는 unique 제약 (PG 기본 null-distinct 문제)
 
@@ -37,6 +46,13 @@ NULL 컬럼을 포함한 unique는 중복을 막지 못한다. 1B-2에서 다음
 `prisma migrate diff` 기준으로 drift처럼 보일 수 있다. migration 파일에
 주석으로 이 문서를 참조시키고, 이후 스키마 변경 시 해당 인덱스를 덮어쓰지
 않는지 migration SQL 리뷰로 확인한다 (1B-2 검증 항목).
+
+## 2.5 MVP 정책: 반복 규칙은 자정을 넘지 않는다
+
+`AvailabilityRule`의 `endTimeLocal > startTimeLocal` CHECK는 의도된 **MVP 정책**이다:
+단일 반복 규칙은 하루(local 달력) 안에서 끝나야 하며 자정을 넘는 세션
+(예: 22:00~01:00)은 지원하지 않는다. 자정을 넘는 일정이 필요해지면
+규칙을 이틀로 분리하거나 CHECK 완화 + 슬롯 생성 로직 확장을 별도 승인으로 진행한다.
 
 ## 3. 기타 앱 레이어에서 보장하는 불변식 (DB 제약 아님)
 

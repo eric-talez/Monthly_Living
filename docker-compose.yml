@@ -1,0 +1,26 @@
+# 로컬 개발용 PostgreSQL (Homebrew 미사용 환경 대안)
+# 주의: 아래 계정/비밀번호는 로컬 개발 전용 기본값이다 — production/staging 사용 금지.
+# 사용 시 .env.local 예:
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/handalsalgi_dev
+#   TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/handalsalgi_test
+services:
+  postgres:
+    image: postgres:16
+    container_name: handalsalgi-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres # 로컬 전용 — 실제 secret 아님
+      POSTGRES_DB: handalsalgi_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - handalsalgi-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d handalsalgi_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  handalsalgi-pgdata:
