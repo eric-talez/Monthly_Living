@@ -1,0 +1,138 @@
+// ── Identity: 사용자 계정·인증 부속 모델 ───────────────────────────
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique // 전역 unique 유지 — docs/decisions/email-reuse-policy.md
+  passwordHash String? // 소셜 전용 계정은 null
+  role         UserRole   @default(TRAVELER)
+  status       UserStatus @default(ACTIVE)
+
+  // ── Auth.js @auth/prisma-adapter 표준 필드 ──
+  // adapter가 변환 없이 prisma.user.create/update에 전달하므로
+  // 필드명(name/image/emailVerified)과 nullable을 그대로 유지해야 한다.
+  // docs/decisions/authjs-session-strategy.md
+  name          String?
+  image         String?
+  emailVerified DateTime? @db.Timestamptz(6)
+
+  // 서비스 실명 — Auth.js name(표시명)과 분리. OAuth provider가 실명을
+  // 보장하지 않으므로 nullable이며, 예약 전 온보딩에서 수집한다 (Phase 1C).
+  fullName          String?
+  nickname          String?
+  phone             String?
+  preferredLanguage String    @default("ko")
+  preferredCurrency Currency  @default(KRW)
+  country           String? // ISO 3166-1 alpha-2
+  timezone          String    @default("Asia/Seoul") // IANA
+  deletedAt         DateTime? @db.Timestamptz(6) // soft delete — adapter deleteUser() 사용 금지
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  accounts                Account[]
+  consents                ConsentRecord[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  travelerProfile         TravelerProfile?
+  expertProfile           ExpertProfile?
+  credentialReviews       ExpertCredential[]       @relation("CredentialReviewer")
+  bookings                Booking[]
+  quotes                  BookingQuote[]
+  conversations           Conversation[]
+  messagesSent            Message[]
+  reviewsWritten          Review[]
+  programFavorites        ProgramFavorite[]
+  expertFavorites         ExpertFavorite[]
+  notifications           Notification[]
+  supportTickets          SupportTicket[]          @relation("TicketAuthor")
+  assignedTickets         SupportTicket[]          @relation("TicketAssignee")
+  reportsFiled            Report[]                 @relation("Reporter")
+  reportsResolved         Report[]                 @relation("ReportResolver")
+  disputesRaised          Dispute[]                @relation("DisputeRaiser")
+  disputesResolved        Dispute[]                @relation("DisputeResolver")
+  matchRequests           MatchRequest[]
+  couponRedemptions       CouponRedemption[]
+  couponsCreated          Coupon[]                 @relation("CouponCreator")
+  guidePostsAuthored      GuidePost[]              @relation("GuideAuthor")
+  payoutsPaid             Payout[]                 @relation("PayoutPayer")
+  payoutAdjustments       PayoutAdjustment[]       @relation("AdjustmentCreator")
+  platformSettingsUpdated PlatformSetting[]        @relation("SettingUpdater")
+  auditLogs               AdminAuditLog[]
+
+  @@index([role, status])
+}
+
+// Auth.js(@auth/prisma-adapter) 호환 OAuth 계정 연결 모델.
+// 필드명은 adapter 기본 스키마(snake_case 토큰 필드)를 그대로 유지한다 — 커스텀 매핑 회피.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// 자체 이메일 인증 토큰 — Auth.js VerificationToken(매직링크)과 혼동 방지를 위해 별도 이름 사용.
+// 토큰 원문은 저장하지 않고 해시만 저장한다.
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// 로그인 시도 기록 (rate limit·계정 보호 근거). 존재하지 않는 이메일 시도도 기록하므로 FK 없음.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String
+  succeeded Boolean
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+// 약관·개인정보·마케팅 동의 이력 (append-only, 버전 보존)
+model ConsentRecord {
+  id        String      @id @default(cuid())
+  userId    String
+  type      ConsentType
+  version   String
+  granted   Boolean
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+}

@@ -1,0 +1,52 @@
+// ── Community: 리뷰·관심 목록 ───────────────────────────────────────
+
+model Review {
+  id              String       @id @default(cuid())
+  bookingId       String       @unique // 완료된 예약당 1건
+  travelerId      String
+  expertId        String
+  programId       String
+  rating          Int // CHECK 1~5 (1B-2)
+  content         String
+  expertReply     String?
+  expertRepliedAt DateTime?    @db.Timestamptz(6)
+  status          ReviewStatus @default(PUBLISHED)
+  deletedAt       DateTime?    @db.Timestamptz(6) // soft delete
+  createdAt       DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(6)
+
+  booking  Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  traveler User          @relation(fields: [travelerId], references: [id], onDelete: Restrict)
+  expert   ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Restrict)
+  program  Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+
+  @@index([programId, status])
+  @@index([expertId, status])
+}
+
+// polymorphic Favorite 대신 대상별 모델로 분리 (FK 무결성 보장)
+model ProgramFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  programId String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, programId])
+  @@index([programId])
+}
+
+model ExpertFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  expertId  String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expert ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, expertId])
+  @@index([expertId])
+}

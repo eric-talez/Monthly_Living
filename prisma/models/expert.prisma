@@ -1,0 +1,83 @@
+// ── Expert: 전문가 프로필·자격 인증·서비스 지역 ─────────────────────
+
+model ExpertProfile {
+  id                        String                   @id @default(cuid())
+  userId                    String                   @unique
+  slug                      String                   @unique
+  displayName               String
+  bio                       String
+  specialties               String[] // Category.slug 목록 (프로그램의 주 카테고리는 Program FK로 강제)
+  languages                 String[] // BCP-47
+  yearsOfExperience         Int                      @default(0)
+  baseDestinationId         String
+  verificationStatus        ExpertVerificationStatus @default(PENDING)
+  identityVerified          Boolean                  @default(false)
+  credentialVerified        Boolean                  @default(false)
+  responseRate              Int? // 0~100 (%)
+  responseTimeMinutes       Int?
+  averageRating             Decimal?                 @db.Decimal(3, 2)
+  reviewCount               Int                      @default(0)
+  completedBookingCount     Int                      @default(0)
+  profilePublished          Boolean                  @default(false)
+  defaultCancellationPolicy String? // 프로그램 생성 시 기본값 (계약값은 Program·Booking snapshot)
+  verifiedAt                DateTime?                @db.Timestamptz(6)
+  verificationNote          String? // 심사 반려 사유 등
+  createdAt                 DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime                 @updatedAt @db.Timestamptz(6)
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseDestination   Destination         @relation("ExpertBase", fields: [baseDestinationId], references: [id], onDelete: Restrict)
+  credentials       ExpertCredential[]
+  serviceAreas      ExpertServiceArea[]
+  programs          Program[]
+  availabilityRules AvailabilityRule[]
+  availabilitySlots AvailabilitySlot[]
+  bookings          Booking[]
+  conversations     Conversation[]
+  reviews           Review[]
+  favoritedBy       ExpertFavorite[]
+  payouts           Payout[]
+
+  @@index([verificationStatus, profilePublished])
+  @@index([baseDestinationId])
+}
+
+// 전문가가 서비스를 제공하는 지역 (검색 필터의 근거 — 정규화된 join 모델)
+model ExpertServiceArea {
+  id            String @id @default(cuid())
+  expertId      String
+  destinationId String
+
+  expert      ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  destination Destination   @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+
+  @@unique([expertId, destinationId])
+  @@index([destinationId])
+}
+
+// 신원·자격 서류 — 파일은 비공개 스토리지 key로만 참조 (공개 URL 저장 금지)
+model ExpertCredential {
+  id                 String           @id @default(cuid())
+  expertId           String
+  type               CredentialType
+  title              String
+  issuer             String?
+  issuedAt           DateTime?        @db.Timestamptz(6)
+  expiresAt          DateTime?        @db.Timestamptz(6)
+  fileKey            String // StorageProvider 내부 key (무작위 파일명)
+  originalFileName   String?
+  mimeType           String?
+  fileSizeBytes      Int?
+  verificationStatus CredentialStatus @default(PENDING)
+  reviewedById       String?
+  reviewedAt         DateTime?        @db.Timestamptz(6)
+  reviewNote         String?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(6)
+
+  expert     ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  reviewedBy User?         @relation("CredentialReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([expertId])
+  @@index([verificationStatus])
+}

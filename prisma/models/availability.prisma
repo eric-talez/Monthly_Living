@@ -1,0 +1,56 @@
+// ── Availability: 반복 규칙(local time) + concrete 슬롯(UTC) 분리 ───
+// 예약·중복 방지·capacity 검증은 전부 AvailabilitySlot 단위로 수행한다.
+// 잠금 프로토콜: docs/decisions/booking-slot-locking.md
+
+model AvailabilityRule {
+  id                  String   @id @default(cuid())
+  expertId            String
+  programId           String? // null이면 전문가 공통 규칙
+  timezone            String // IANA — 아래 local 값들의 기준
+  daysOfWeek          Int[] // 0(일)~6(토), local 달력 기준
+  startTimeLocal      String // "HH:mm" (local)
+  endTimeLocal        String // "HH:mm" (local)
+  startDateLocal      String? // "YYYY-MM-DD" 규칙 적용 시작일 (local 달력)
+  endDateLocal        String? // "YYYY-MM-DD" 규칙 적용 종료일 (local 달력)
+  slotDurationMinutes Int? // null이면 start~end 단일 슬롯
+  capacity            Int      @default(1)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  expert  ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  program Program?      @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  slots AvailabilitySlot[]
+
+  @@index([expertId, active])
+  @@index([programId, active])
+}
+
+model AvailabilitySlot {
+  id            String     @id @default(cuid())
+  expertId      String
+  programId     String?
+  ruleId        String? // null이면 수동 생성 슬롯
+  startsAt      DateTime   @db.Timestamptz(6) // UTC
+  endsAt        DateTime   @db.Timestamptz(6) // UTC
+  timezone      String // 생성 당시 IANA (표시·재생성 근거)
+  capacity      Int
+  reservedCount Int        @default(0) // CHECK 0 <= reservedCount <= capacity (1B-2)
+  status        SlotStatus @default(OPEN)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(6)
+
+  expert  ExpertProfile     @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  program Program?          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  rule    AvailabilityRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  bookingSlots BookingSlot[]
+
+  // 슬롯 생성 job의 idempotency 근거. programId가 NULL인 행은 PG 기본
+  // null-distinct 규칙으로 중복될 수 있음 — 1B-2에서 NULLS NOT DISTINCT 처리
+  // (docs/decisions/database-constraints.md)
+  @@unique([expertId, programId, startsAt, endsAt])
+  @@index([programId, status, startsAt])
+  @@index([expertId, startsAt])
+}

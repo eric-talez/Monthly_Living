@@ -1,0 +1,205 @@
+// ── 공통 enum (총 29종) ─────────────────────────────────────────────
+
+enum UserRole {
+  TRAVELER
+  EXPERT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum Currency {
+  KRW
+  USD
+  THB
+  VND
+}
+
+enum ConsentType {
+  TERMS
+  PRIVACY
+  MARKETING
+}
+
+enum ExpertVerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum CredentialType {
+  IDENTITY
+  CERTIFICATE
+  LICENSE
+  OTHER
+}
+
+enum CredentialStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProgramType {
+  PRIVATE
+  GROUP
+}
+
+enum ProgramStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum BookingType {
+  INSTANT
+  REQUEST
+}
+
+enum BookingStatus {
+  DRAFT
+  PENDING
+  ACCEPTED
+  REJECTED
+  PAYMENT_PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLATION_REQUESTED
+  CANCELLED
+  REFUNDED
+  DISPUTED
+}
+
+enum QuoteStatus {
+  ACTIVE
+  EXPIRED
+  CONSUMED
+}
+
+enum ParticipantType {
+  ADULT
+  CHILD
+  PET
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  PAID
+  ON_HOLD
+}
+
+enum PayoutAdjustmentType {
+  REFUND
+  CHARGEBACK
+  MANUAL_CORRECTION
+}
+
+enum SlotStatus {
+  OPEN
+  BLOCKED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+  UNDER_REVIEW
+}
+
+enum NotificationType {
+  BOOKING_REQUESTED
+  BOOKING_ACCEPTED
+  BOOKING_REJECTED
+  BOOKING_CHANGED
+  BOOKING_CANCELLED
+  BOOKING_REMINDER
+  PAYMENT_COMPLETED
+  REFUND_COMPLETED
+  NEW_MESSAGE
+  REVIEW_REQUEST
+  EXPERT_VERIFICATION_RESULT
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ReportTargetType {
+  REVIEW
+  MESSAGE
+  USER
+  PROGRAM
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  BOOKING
+  PAYMENT
+  REFUND
+  EXPERT
+  ACCOUNT
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}

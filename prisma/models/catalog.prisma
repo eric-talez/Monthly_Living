@@ -1,0 +1,118 @@
+// ── Catalog: 지역·카테고리·프로그램 ─────────────────────────────────
+
+model Destination {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  countryCode   String // ISO 3166-1 alpha-2 (KR/TH/VN)
+  countryNameKo String
+  countryNameEn String
+  cityNameKo    String
+  cityNameEn    String
+  descriptionKo String?
+  descriptionEn String?
+  coverImageUrl String?
+  latitude      Decimal  @db.Decimal(9, 6)
+  longitude     Decimal  @db.Decimal(9, 6)
+  timezone      String // IANA (예: Asia/Seoul, Asia/Bangkok)
+  currency      Currency
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  expertsBase   ExpertProfile[]     @relation("ExpertBase")
+  serviceAreas  ExpertServiceArea[]
+  programs      Program[]
+  guidePosts    GuidePost[]
+  matchRequests MatchRequest[]
+
+  @@index([countryCode, active, sortOrder])
+}
+
+model Category {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  nameKo        String
+  nameEn        String
+  descriptionKo String?
+  descriptionEn String?
+  icon          String? // 아이콘 식별자
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  programs   Program[]
+  guidePosts GuidePost[]
+
+  @@index([active, sortOrder])
+}
+
+model Program {
+  id                    String        @id @default(cuid())
+  expertId              String
+  destinationId         String
+  categoryId            String
+  slug                  String        @unique
+  title                 String
+  shortDescription      String
+  fullDescription       String
+  programType           ProgramType
+  isOnline              Boolean       @default(false)
+  bookingType           BookingType   @default(REQUEST) // 즉시 예약 vs 승인 후 예약
+  durationDays          Int
+  sessionCount          Int
+  maxParticipants       Int           @default(1)
+  languages             String[] // BCP-47
+  includes              String[]
+  excludes              String[]
+  requirements          String[]
+  meetingPoint          String?
+  cancellationPolicy    String // 계약 조건 — 예약 시 Booking snapshot으로 고정됨
+  basePrice             Int // 1인 기준, minor units
+  currency              Currency
+  petFriendly           Boolean       @default(false)
+  childFriendly         Boolean       @default(false)
+  accommodationIncluded Boolean       @default(false)
+  transportIncluded     Boolean       @default(false)
+  status                ProgramStatus @default(DRAFT)
+  featured              Boolean       @default(false)
+  averageRating         Decimal?      @db.Decimal(3, 2)
+  reviewCount           Int           @default(0)
+  publishedAt           DateTime?     @db.Timestamptz(6)
+  deletedAt             DateTime?     @db.Timestamptz(6) // soft delete
+  createdAt             DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(6)
+
+  expert      ExpertProfile @relation(fields: [expertId], references: [id], onDelete: Restrict)
+  destination Destination   @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+  category    Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  media             ProgramMedia[]
+  availabilityRules AvailabilityRule[]
+  availabilitySlots AvailabilitySlot[]
+  quotes            BookingQuote[]
+  bookings          Booking[]
+  reviews           Review[]
+  favoritedBy       ProgramFavorite[]
+
+  @@index([destinationId, categoryId, status])
+  @@index([status, featured])
+  @@index([expertId, status])
+  @@index([basePrice])
+  @@index([averageRating])
+}
+
+model ProgramMedia {
+  id        String    @id @default(cuid())
+  programId String
+  type      MediaType @default(IMAGE)
+  url       String
+  altText   String?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([programId, sortOrder])
+}

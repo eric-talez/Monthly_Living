@@ -3,7 +3,7 @@
 제주 · 태국(방콕/치앙마이/푸껫/코사무이) · 베트남(다낭/호찌민/하노이/나트랑)에서 목적 기반
 한달살기 프로그램을 찾고, 현지 전문가와 연결·예약·결제·메시지까지 이어지는 프리미엄 플랫폼.
 
-> **현재 상태: 개발 진행 중 (Phase 1A 완료 — 저장소 기반 구축)**
+> **현재 상태: 개발 진행 중 (Phase 1B 완료 — DB 기반: 스키마·migration·seed)**
 > 이 프로젝트의 목표 산출물은 **"production architecture를 갖춘 staging-ready MVP"** 입니다.
 > Mock Payment / Console Email / Local FS Storage 상태에서는 production launch 완료로
 > 간주하지 않으며, 실제 출시 조건은 아래 [출시 Gate](#출시-gate)를 따릅니다.
@@ -15,17 +15,64 @@
 - **Tailwind CSS v4** — 커스텀 디자인 토큰 (크림 화이트 / 웜 차콜 / 세이지·네이비·테라코타)
 - **next-intl** — 한국어(기본)·영어, `/en` prefix 방식 (`localePrefix: as-needed`)
 - **Zod** — 환경변수·입력 검증
-- Prisma + PostgreSQL 16, Auth.js v5, Vitest/Playwright — _이후 Phase에서 도입 예정_
+- **Prisma 7 + PostgreSQL 15+** — multi-file schema, pg driver adapter, 안전장치 있는 DB 스크립트
+- Auth.js v5, Vitest/Playwright — _이후 Phase에서 도입 예정_
 
 ## 로컬 개발 실행
 
-요구사항: Node.js 22+, pnpm 11+
+요구사항: Node.js 22+, pnpm 11+, **PostgreSQL 15 이상**
+(`UNIQUE ... NULLS NOT DISTINCT` 사용으로 PostgreSQL 15 미만 미지원 — 로컬 검증 버전은 16)
+
+clean checkout 설치 순서:
 
 ```bash
 pnpm install
-cp .env.example .env.local   # 값은 파일 내 안내 참고 (Phase 1A는 기본값으로 동작)
+cp .env.example .env.local   # DATABASE_URL 필수 — fallback 없음 (fail-closed)
+pnpm db:generate             # Prisma Client 생성 (src/generated/ — git 미추적)
+pnpm lint
+pnpm typecheck
+pnpm build
+
+# ── 데이터베이스 준비 (PostgreSQL 15+) ──
+createdb handalsalgi_dev && createdb handalsalgi_test   # 또는: docker compose up -d
+pnpm db:deploy               # migration 적용 (dev)
+pnpm db:seed                 # 개발용 seed 데이터
+pnpm db:test:prepare         # 통합 테스트 DB에 migration만 적용 (seed 없음)
+
 pnpm dev                     # http://localhost:3000
 ```
+
+### DB 스크립트
+
+| 명령                              | 동작                                                                              |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm db:deploy`                  | pending migration 적용 (`migrate deploy` — shadow DB 없음)                        |
+| `pnpm db:seed`                    | idempotent seed (재실행 시 동일 상태로 수렴)                                      |
+| `pnpm db:test:prepare`            | TEST_DATABASE_URL 대상에 migration만 적용 (가드 경유)                             |
+| `pnpm db:reset` / `db:reset:test` | 안전장치 경유 `migrate reset` — dev는 reset 후 seed 재적용, test는 빈 스키마 유지 |
+| `pnpm db:migrate:draft`           | 새 migration draft 생성 (`--create-only`)                                         |
+
+> **migration 워크플로 주의**: 새 migration은 반드시 `db:migrate:draft`로 draft만 만들고
+> 생성된 SQL을 리뷰한 뒤(custom index/CHECK를 drop하려 하지 않는지 —
+> [database-constraints.md](docs/decisions/database-constraints.md) §2 drift 주의) `db:deploy`로 적용합니다.
+> `prisma migrate dev`를 직접 적용 모드로 실행하지 않습니다.
+>
+> **reset 안전장치** — 다음은 항상 거부됩니다: production 환경, localhost 이외 host,
+> 시스템 DB(postgres/template0/template1), dev 대상인데 `handalsalgi_dev`/`*_dev`가 아닌 이름,
+> test 대상인데 `*_test`로 끝나지 않는 이름, `?schema=`가 public 이외, URL 파싱 실패.
+
+### 테스트 계정 (seed, 비밀번호 `Test1234!`)
+
+| 이메일                    | 역할                                      |
+| ------------------------- | ----------------------------------------- |
+| `traveler@test.com`       | 일반 사용자 (여행 선호 프로필 포함)       |
+| `expert@test.com`         | 승인된 전문가 (공개 프로필·프로그램 2개)  |
+| `expert-pending@test.com` | 승인 대기 전문가 (비공개, DRAFT 프로그램) |
+| `admin@test.com`          | 관리자                                    |
+
+> seed 데이터는 개발·스테이징 전용입니다: 이미지는 placeholder(picsum)이고,
+> 전문가·프로그램의 평점/완료 수는 Review 없이 채운 표시용 가정치입니다
+> (Phase 5에서 실제 데이터 기반 재계산으로 대체). production 전 교체 필수.
 
 ### 품질 검증 명령
 
@@ -34,17 +81,25 @@ pnpm lint          # ESLint
 pnpm typecheck     # tsc --noEmit
 pnpm build         # production build
 pnpm format:check  # Prettier 검사 (자동 수정: pnpm format)
+pnpm db:format     # Prisma schema 포맷
+pnpm db:validate   # Prisma schema 검증
+pnpm db:generate   # Prisma Client 생성
 ```
 
 ## 프로젝트 구조
 
 ```
+prisma/
+├── schema.prisma      # datasource·generator (연결 URL은 prisma.config.ts)
+└── models/*.prisma    # 도메인별 모델·enum (multi-file schema)
+docs/decisions/        # 설계 결정 기록 (DB 제약, 이메일 정책, 잠금 프로토콜 등)
 src/
 ├── app/               # 라우트 (얇게 유지 — 비즈니스 로직 금지)
 │   └── [locale]/      # ko(기본, prefix 없음) / en
 ├── modules/           # 도메인 서비스 레이어 (비즈니스 로직·권한 검증)
 ├── adapters/          # 외부 서비스 어댑터 (payment/email/storage/rate-limit)
-├── lib/               # env 검증, AppError, API 응답 규격, 공용 유틸
+├── lib/               # env 검증, AppError, API 응답 규격, prisma client
+├── generated/         # Prisma Client 생성물 (git 미추적 — pnpm db:generate)
 ├── components/        # layout/ + ui/ 공용 컴포넌트
 ├── i18n/              # next-intl 라우팅·요청 설정
 ├── messages/          # ko.json / en.json — UI 문자열 하드코딩 금지

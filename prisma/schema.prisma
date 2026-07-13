@@ -1,0 +1,20 @@
+// 한달살기 데이터베이스 스키마 — datasource와 generator만 이 파일에 둔다.
+// 모델과 enum은 도메인별로 prisma/models/*.prisma에 분리되어 있다.
+//
+// 공통 규칙 (docs/decisions/database-constraints.md 참고):
+// - 모든 DateTime은 UTC 저장, @db.Timestamptz(6) 명시
+// - local-time 규칙 값(요일·시각·달력 날짜)은 문자열 컬럼 + IANA timezone 컬럼으로 별도 보존
+// - 금액은 통화 최소 단위 정수(Int) + Currency enum (KRW/VND 0-decimal, USD/THB cents)
+// - 금융·감사 기록(Booking/Payment/Payout/AdminAuditLog)은 onDelete: Restrict
+// - CHECK 등 Prisma로 표현 불가한 제약은 Phase 1B-2 migration SQL에서 추가
+
+// 연결 URL은 Prisma 7 규칙에 따라 prisma.config.ts(CLI)와
+// PrismaClient adapter(src/lib/prisma.ts, 런타임)에서 공급된다.
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
