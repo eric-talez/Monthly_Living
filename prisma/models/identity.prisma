@@ -1,23 +1,32 @@
 // ── Identity: 사용자 계정·인증 부속 모델 ───────────────────────────
 
 model User {
-  id                String     @id @default(cuid())
-  email             String     @unique // 전역 unique 유지 — docs/decisions/email-reuse-policy.md
-  passwordHash      String? // 소셜 전용 계정은 null
-  role              UserRole   @default(TRAVELER)
-  status            UserStatus @default(ACTIVE)
-  fullName          String
+  id           String     @id @default(cuid())
+  email        String     @unique // 전역 unique 유지 — docs/decisions/email-reuse-policy.md
+  passwordHash String? // 소셜 전용 계정은 null
+  role         UserRole   @default(TRAVELER)
+  status       UserStatus @default(ACTIVE)
+
+  // ── Auth.js @auth/prisma-adapter 표준 필드 ──
+  // adapter가 변환 없이 prisma.user.create/update에 전달하므로
+  // 필드명(name/image/emailVerified)과 nullable을 그대로 유지해야 한다.
+  // docs/decisions/authjs-session-strategy.md
+  name          String?
+  image         String?
+  emailVerified DateTime? @db.Timestamptz(6)
+
+  // 서비스 실명 — Auth.js name(표시명)과 분리. OAuth provider가 실명을
+  // 보장하지 않으므로 nullable이며, 예약 전 온보딩에서 수집한다 (Phase 1C).
+  fullName          String?
   nickname          String?
   phone             String?
-  profileImageUrl   String?
-  preferredLanguage String     @default("ko")
-  preferredCurrency Currency   @default(KRW)
+  preferredLanguage String    @default("ko")
+  preferredCurrency Currency  @default(KRW)
   country           String? // ISO 3166-1 alpha-2
-  timezone          String     @default("Asia/Seoul") // IANA
-  emailVerifiedAt   DateTime?  @db.Timestamptz(6)
-  deletedAt         DateTime?  @db.Timestamptz(6) // soft delete
-  createdAt         DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime   @updatedAt @db.Timestamptz(6)
+  timezone          String    @default("Asia/Seoul") // IANA
+  deletedAt         DateTime? @db.Timestamptz(6) // soft delete — adapter deleteUser() 사용 금지
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
 
   accounts                Account[]
   consents                ConsentRecord[]

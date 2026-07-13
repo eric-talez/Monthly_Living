@@ -18,6 +18,9 @@ model BookingQuote {
   couponId         String?
   status           QuoteStatus @default(ACTIVE)
   expiresAt        DateTime    @db.Timestamptz(6) // CHECK expiresAt > createdAt (1B-2)
+  // 서비스 invariant: status = CONSUMED ↔ consumedAt IS NOT NULL
+  // 소비 프로토콜: docs/decisions/database-constraints.md "Quote → Booking 소비 프로토콜"
+  consumedAt       DateTime?   @db.Timestamptz(6)
   createdAt        DateTime    @default(now()) @db.Timestamptz(6)
 
   traveler User    @relation(fields: [travelerId], references: [id], onDelete: Cascade)

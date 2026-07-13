@@ -16,6 +16,14 @@
 3. 초기 서비스에서 이메일 재사용 요구는 드물고, 잘못 구현하면 이전 사용자의
    데이터(리뷰·예약 이력)가 새 사용자와 연결되는 개인정보 사고로 이어질 수 있다.
 
+## 공식 PrismaAdapter `deleteUser()`와의 충돌 (PR #1 리뷰 반영)
+
+공식 `@auth/prisma-adapter`의 `deleteUser()`는 **hard delete**를 수행하므로
+이 프로젝트의 soft delete 정책과 충돌한다. **Phase 1C의 계정 탈퇴는 adapter의
+`deleteUser()`를 직접 호출하지 않고**, 별도 서비스 로직에서 `status=DELETED`와
+`deletedAt` 설정, 개인정보 익명화(아래 하드 익명화 절차)를 수행한다.
+상세: [authjs-session-strategy.md](authjs-session-strategy.md).
+
 ## 재사용이 필요해질 경우의 마이그레이션 경로 (별도 승인 필요)
 
 1. **하드 익명화 방식(권장)**: 계정 삭제 확정 시점(유예 기간 후)에

@@ -2,6 +2,10 @@
 // Payout 원본 금액은 생성 후 수정하지 않는다.
 // 환불·chargeback·수동 조정은 PayoutAdjustment에 append-only로만 기록한다.
 // 최종 지급액 = payoutAmount + SUM(adjustments.amount)  (조정 금액은 음수 가능)
+//
+// 앱 레이어 필수 불변식 (docs/decisions/database-constraints.md §3):
+// - Payout.expertId = Booking.expertId, Payout.currency = Booking.currency
+// - Payout 생성은 Booking COMPLETED 처리와 같은 transaction에서 수행
 
 model Payout {
   id               String       @id @default(cuid())
@@ -31,13 +35,14 @@ model Payout {
   @@index([status, scheduledAt])
 }
 
-// append-only 정산 조정 기록 — 이미 PAID된 금액을 덮어쓰지 않기 위한 구조
+// append-only 정산 조정 기록 — 이미 PAID된 금액을 덮어쓰지 않기 위한 구조.
+// 통화 필드는 두지 않는다: adjustment의 통화는 항상 부모 Payout.currency를 따른다
+// (서로 다른 통화의 정수 합산 사고 방지 — docs/decisions/database-constraints.md §3).
 model PayoutAdjustment {
   id          String               @id @default(cuid())
   payoutId    String
   type        PayoutAdjustmentType
-  amount      Int // signed — 차감은 음수 (CHECK amount <> 0, 1B-2)
-  currency    Currency
+  amount      Int // signed, 부모 Payout.currency 단위 — 차감은 음수 (CHECK amount <> 0)
   reason      String
   createdById String?
   createdAt   DateTime             @default(now()) @db.Timestamptz(6)

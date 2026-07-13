@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('TRAVELER', 'EXPERT', 'ADMIN');
 
@@ -140,6 +143,7 @@ CREATE TABLE "BookingQuote" (
     "couponId" TEXT,
     "status" "QuoteStatus" NOT NULL DEFAULT 'ACTIVE',
     "expiresAt" TIMESTAMPTZ(6) NOT NULL,
+    "consumedAt" TIMESTAMPTZ(6),
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "BookingQuote_pkey" PRIMARY KEY ("id")
@@ -406,15 +410,16 @@ CREATE TABLE "User" (
     "passwordHash" TEXT,
     "role" "UserRole" NOT NULL DEFAULT 'TRAVELER',
     "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
-    "fullName" TEXT NOT NULL,
+    "name" TEXT,
+    "image" TEXT,
+    "emailVerified" TIMESTAMPTZ(6),
+    "fullName" TEXT,
     "nickname" TEXT,
     "phone" TEXT,
-    "profileImageUrl" TEXT,
     "preferredLanguage" TEXT NOT NULL DEFAULT 'ko',
     "preferredCurrency" "Currency" NOT NULL DEFAULT 'KRW',
     "country" TEXT,
     "timezone" TEXT NOT NULL DEFAULT 'Asia/Seoul',
-    "emailVerifiedAt" TIMESTAMPTZ(6),
     "deletedAt" TIMESTAMPTZ(6),
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
@@ -776,7 +781,6 @@ CREATE TABLE "PayoutAdjustment" (
     "payoutId" TEXT NOT NULL,
     "type" "PayoutAdjustmentType" NOT NULL,
     "amount" INTEGER NOT NULL,
-    "currency" "Currency" NOT NULL,
     "reason" TEXT NOT NULL,
     "createdById" TEXT,
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1283,6 +1287,7 @@ ALTER TABLE "PayoutAdjustment" ADD CONSTRAINT "PayoutAdjustment_createdById_fkey
 -- AddForeignKey
 ALTER TABLE "TravelerProfile" ADD CONSTRAINT "TravelerProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+
 -- ═══════════════════════════════════════════════════════════════════
 -- Custom SQL (Prisma schema로 표현 불가) — docs/decisions/database-constraints.md
 -- 이 섹션은 수동 관리한다. Prisma가 자동 생성하지 않으므로 이후 migration에서
@@ -1304,6 +1309,7 @@ CREATE UNIQUE INDEX "Conversation_travelerId_expertId_general_key"
 
 -- ── §1 CHECK constraints ────────────────────────────────────────────
 -- docs/decisions/database-constraints.md §1
+-- 주의: CHECK는 NULL 결과 시 통과하므로 필수 조합에는 IS NOT NULL을 명시한다.
 
 -- AvailabilityRule: 요일 범위·HH:mm 고정 형식·시간 순서(§2.5 MVP: 자정 넘는 규칙 미지원)
 ALTER TABLE "AvailabilityRule" ADD CONSTRAINT "AvailabilityRule_capacity_check" CHECK ("capacity" > 0);
@@ -1318,21 +1324,28 @@ ALTER TABLE "AvailabilitySlot" ADD CONSTRAINT "AvailabilitySlot_capacity_check" 
 ALTER TABLE "AvailabilitySlot" ADD CONSTRAINT "AvailabilitySlot_reserved_range_check" CHECK ("reservedCount" >= 0 AND "reservedCount" <= "capacity");
 ALTER TABLE "AvailabilitySlot" ADD CONSTRAINT "AvailabilitySlot_time_order_check" CHECK ("endsAt" > "startsAt");
 
--- Program
+-- Program: 가격·기간·정원·평판 수치
 ALTER TABLE "Program" ADD CONSTRAINT "Program_basePrice_check" CHECK ("basePrice" >= 0);
 ALTER TABLE "Program" ADD CONSTRAINT "Program_durationDays_check" CHECK ("durationDays" > 0);
 ALTER TABLE "Program" ADD CONSTRAINT "Program_sessionCount_check" CHECK ("sessionCount" > 0);
 ALTER TABLE "Program" ADD CONSTRAINT "Program_maxParticipants_check" CHECK ("maxParticipants" > 0);
+ALTER TABLE "Program" ADD CONSTRAINT "Program_reviewCount_check" CHECK ("reviewCount" >= 0);
+ALTER TABLE "Program" ADD CONSTRAINT "Program_averageRating_range_check" CHECK ("averageRating" IS NULL OR ("averageRating" BETWEEN 0 AND 5));
 
--- BookingQuote: 금액 음수 금지·인원·만료 순서
+-- BookingQuote: 금액 음수 금지·인원·만료 순서·수수료율 범위·금액 등식
 ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_amounts_check" CHECK ("unitPrice" >= 0 AND "subtotal" >= 0 AND "serviceFee" >= 0 AND "taxes" >= 0 AND "discount" >= 0 AND "total" >= 0);
 ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_participantCount_check" CHECK ("participantCount" > 0);
 ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_expiry_order_check" CHECK ("expiresAt" > "createdAt");
+ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_feeRateBps_range_check" CHECK ("feeRateBps" BETWEEN 0 AND 10000);
+ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_discount_cap_check" CHECK ("discount" <= "subtotal" + "serviceFee" + "taxes");
+ALTER TABLE "BookingQuote" ADD CONSTRAINT "BookingQuote_total_equation_check" CHECK ("total" = "subtotal" + "serviceFee" + "taxes" - "discount");
 
--- Booking: 금액 음수 금지·인원·기간 순서
+-- Booking: 금액 음수 금지·인원·기간 순서·금액 등식
 ALTER TABLE "Booking" ADD CONSTRAINT "Booking_amounts_check" CHECK ("subtotal" >= 0 AND "serviceFee" >= 0 AND "taxes" >= 0 AND "discount" >= 0 AND "total" >= 0);
 ALTER TABLE "Booking" ADD CONSTRAINT "Booking_participantCount_check" CHECK ("participantCount" > 0);
 ALTER TABLE "Booking" ADD CONSTRAINT "Booking_time_order_check" CHECK ("endsAt" > "startsAt");
+ALTER TABLE "Booking" ADD CONSTRAINT "Booking_discount_cap_check" CHECK ("discount" <= "subtotal" + "serviceFee" + "taxes");
+ALTER TABLE "Booking" ADD CONSTRAINT "Booking_total_equation_check" CHECK ("total" = "subtotal" + "serviceFee" + "taxes" - "discount");
 
 -- BookingSlot
 ALTER TABLE "BookingSlot" ADD CONSTRAINT "BookingSlot_participantCount_check" CHECK ("participantCount" > 0);
@@ -1341,18 +1354,20 @@ ALTER TABLE "BookingSlot" ADD CONSTRAINT "BookingSlot_participantCount_check" CH
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_amount_check" CHECK ("amount" >= 0);
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_refunded_range_check" CHECK ("refundedAmount" >= 0 AND "refundedAmount" <= "amount");
 
--- Payout (정산 원장 — 원본 금액 음수 금지)
+-- Payout (정산 원장 — 원본 금액 음수 금지, 수수료·지급액은 gross 이내)
 ALTER TABLE "Payout" ADD CONSTRAINT "Payout_amounts_check" CHECK ("grossAmount" >= 0 AND "platformFee" >= 0 AND "payoutAmount" >= 0);
+ALTER TABLE "Payout" ADD CONSTRAINT "Payout_fee_within_gross_check" CHECK ("platformFee" <= "grossAmount");
+ALTER TABLE "Payout" ADD CONSTRAINT "Payout_payout_within_gross_check" CHECK ("payoutAmount" <= "grossAmount");
 
--- PayoutAdjustment: 의도적으로 음수 허용(차감 조정), 0만 금지
+-- PayoutAdjustment: 의도적으로 음수 허용(차감 조정), 0만 금지.
+-- 통화 컬럼 없음 — 항상 부모 Payout.currency를 따른다 (§3).
 ALTER TABLE "PayoutAdjustment" ADD CONSTRAINT "PayoutAdjustment_amount_nonzero_check" CHECK ("amount" <> 0);
 
 -- Review
 ALTER TABLE "Review" ADD CONSTRAINT "Review_rating_range_check" CHECK ("rating" BETWEEN 1 AND 5);
 
--- Coupon: 기간 순서·타입별 필드 상호배타·한도
+-- Coupon: 기간 순서·타입별 필드 상호배타·한도 (maxRedemptions NULL = 무제한)
 ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_valid_period_check" CHECK ("validUntil" > "validFrom");
--- 주의: CHECK는 NULL 결과 시 통과하므로 IS NOT NULL을 명시해 NULL 우회를 차단한다
 ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_type_fields_check" CHECK (
   ("type" = 'PERCENTAGE' AND "percentOff" IS NOT NULL AND "percentOff" BETWEEN 1 AND 100 AND "amountOff" IS NULL AND "currency" IS NULL)
   OR
@@ -1361,13 +1376,32 @@ ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_type_fields_check" CHECK (
 ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_maxRedemptions_check" CHECK ("maxRedemptions" IS NULL OR "maxRedemptions" > 0);
 ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_perUserLimit_check" CHECK ("perUserLimit" > 0);
 ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_redemptionCount_check" CHECK ("redemptionCount" >= 0);
+ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_minSubtotal_check" CHECK ("minSubtotal" IS NULL OR "minSubtotal" >= 0);
+ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_redemption_cap_check" CHECK ("maxRedemptions" IS NULL OR "redemptionCount" <= "maxRedemptions");
 
 -- ExchangeRate
 ALTER TABLE "ExchangeRate" ADD CONSTRAINT "ExchangeRate_rate_check" CHECK ("rate" > 0);
 
--- ExpertProfile
+-- ExpertProfile: 응답 지표·평판 수치
 ALTER TABLE "ExpertProfile" ADD CONSTRAINT "ExpertProfile_responseRate_range_check" CHECK ("responseRate" IS NULL OR ("responseRate" BETWEEN 0 AND 100));
 ALTER TABLE "ExpertProfile" ADD CONSTRAINT "ExpertProfile_experience_check" CHECK ("yearsOfExperience" >= 0);
+ALTER TABLE "ExpertProfile" ADD CONSTRAINT "ExpertProfile_responseTime_check" CHECK ("responseTimeMinutes" IS NULL OR "responseTimeMinutes" >= 0);
+ALTER TABLE "ExpertProfile" ADD CONSTRAINT "ExpertProfile_counts_check" CHECK ("reviewCount" >= 0 AND "completedBookingCount" >= 0);
+ALTER TABLE "ExpertProfile" ADD CONSTRAINT "ExpertProfile_averageRating_range_check" CHECK ("averageRating" IS NULL OR ("averageRating" BETWEEN 0 AND 5));
+
+-- ExpertCredential: 파일 크기·유효기간 순서
+ALTER TABLE "ExpertCredential" ADD CONSTRAINT "ExpertCredential_fileSize_check" CHECK ("fileSizeBytes" IS NULL OR "fileSizeBytes" >= 0);
+ALTER TABLE "ExpertCredential" ADD CONSTRAINT "ExpertCredential_expiry_order_check" CHECK ("expiresAt" IS NULL OR "issuedAt" IS NULL OR "expiresAt" > "issuedAt");
+
+-- Destination: 좌표 범위
+ALTER TABLE "Destination" ADD CONSTRAINT "Destination_latitude_range_check" CHECK ("latitude" BETWEEN -90 AND 90);
+ALTER TABLE "Destination" ADD CONSTRAINT "Destination_longitude_range_check" CHECK ("longitude" BETWEEN -180 AND 180);
+
+-- Conversation: 미읽음 수
+ALTER TABLE "Conversation" ADD CONSTRAINT "Conversation_unread_counts_check" CHECK ("travelerUnreadCount" >= 0 AND "expertUnreadCount" >= 0);
+
+-- NotificationDelivery: 시도 횟수
+ALTER TABLE "NotificationDelivery" ADD CONSTRAINT "NotificationDelivery_attemptCount_check" CHECK ("attemptCount" >= 0);
 
 -- TravelerProfile: 예산 범위·그룹 크기
 ALTER TABLE "TravelerProfile" ADD CONSTRAINT "TravelerProfile_budget_check" CHECK (

@@ -131,6 +131,28 @@ migration은 적용되지 않았고 seed는 실행되지 않음.
 **다음 (1B-2B)**: migration.sql 검토 승인 후 dev DB 적용 → seed 작성·실행 →
 reset 왕복 → CHECK 위반 spot test.
 
+### PR #1 리뷰 반영 (2026-07-12)
+
+- **Auth.js 호환성**: User에 adapter 표준 필드 `name`/`image`/`emailVerified`(nullable)
+  채택, `fullName`은 nullable 실명 필드로 분리, `profileImageUrl`/`emailVerifiedAt` 제거.
+  공식 PrismaAdapter `deleteUser()`는 hard delete → Phase 1C 탈퇴는 별도 서비스 로직
+  (soft delete + 익명화)로 결정, 문서화.
+- **Payout 통화 무결성**: `PayoutAdjustment.currency` 제거 — 항상 부모 Payout.currency.
+  `platformFee <= grossAmount`, `payoutAmount <= grossAmount` CHECK 추가.
+  Payout.expertId/currency = Booking 일치는 앱 레이어 invariant로 문서화.
+- **Quote→Booking**: `BookingQuote.consumedAt` 추가, 8단계 소비 프로토콜 문서화
+  (FOR UPDATE 잠금→검증→복사→CONSUMED 동일 tx), feeRateBps 0~10000·discount cap·
+  total 등식 CHECK를 Quote/Booking 양쪽에 추가.
+- **Availability 소유권**: Rule/Slot/BookingSlot/Booking 간 expertId·programId 일치
+  invariant 4종을 booking-slot-locking.md에 기록 (복합 FK 대신 서비스 검증+통합 테스트).
+- **추가 CHECK**: ExpertProfile(응답시간·카운트·평점), Program(카운트·평점),
+  Coupon(minSubtotal·redemption cap), Conversation(미읽음), NotificationDelivery,
+  ExpertCredential(파일 크기·유효기간), Destination(좌표 범위) — 총 CHECK 58건.
+- **reset 안전장치 강화**: 시스템 DB 거부, dev는 `handalsalgi_dev`/`*_dev` 강제,
+  test는 `*_test` suffix 강제, `?schema=` public 이외 거부.
+- **migration 재생성**: `prisma migrate diff --from-empty --to-schema --script`로
+  DB 무접촉 재생성 (`20260712041838_init` — 기존 폴더 교체, initial migration 1개 유지).
+
 ## 알려진 문제
 
 - **CI 순서 제약**: `src/generated/`(Prisma Client)는 git 미추적이므로 CI에서

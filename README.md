@@ -36,7 +36,9 @@ pnpm dev                     # http://localhost:3000
 
 > DB migration 적용·seed는 Phase 1B-2B에서 추가됩니다.
 > DB reset은 반드시 안전장치가 있는 `pnpm db:reset`(dev) / `pnpm db:reset:test`(test)로만
-> 실행합니다 (production·비 localhost·`_test` 미포함 test DB 이름은 거부).
+> 실행합니다. 다음은 항상 거부됩니다: production 환경, localhost 이외 host,
+> 시스템 DB(postgres/template0/template1), dev 대상인데 `handalsalgi_dev`/`*_dev`가 아닌 이름,
+> test 대상인데 `*_test`로 끝나지 않는 이름, `?schema=`가 public 이외, URL 파싱 실패.
 
 ### 품질 검증 명령
 

@@ -33,6 +33,28 @@ ORDER BY id FOR UPDATE`로 행 잠금을 획득한다.
 - DB의 최종 방어선: `reservedCount <= capacity` CHECK
   ([database-constraints.md](database-constraints.md) — 1B-2에서 추가).
 
+## 소유권 일치 invariant (PR #1 리뷰 반영)
+
+Rule/Slot/Booking의 expertId·programId는 FK로 개별 참조만 되고 **서로의 일치는
+DB가 보장하지 않는다**. 복합 FK(`(expertId, programId)` 참조)를 추가하면 Prisma
+관계 모델링과 사용성이 과도하게 복잡해지므로 **DB constraint 대신 서비스 레이어
+invariant + 통합 테스트 요구사항**으로 강제한다.
+
+**invariant 목록** — 각 생성 transaction 안에서 검증한다:
+
+1. `AvailabilityRule.programId`가 있으면
+   `Program(programId).expertId = Rule.expertId`여야 한다. (Rule 생성/수정 시)
+2. Rule에서 생성된 `AvailabilitySlot`의 `expertId`/`programId`는
+   **Rule의 값과 동일**해야 한다. (슬롯 생성 job)
+3. 수동 생성 Slot에 `programId`가 있으면
+   `Program(programId).expertId = Slot.expertId`여야 한다. (수동 슬롯 생성 시)
+4. `BookingSlot`이 연결하는 Slot의 `expertId`/`programId`는
+   **Booking의 `expertId`/`programId`와 동일**해야 한다.
+   (Booking 생성 transaction — slot 잠금 획득 직후 검증)
+
+**통합 테스트 요구사항 (Phase 4·5)**: 위 4개 invariant 각각에 대해
+불일치 데이터로 생성 시도가 거부되는 테스트를 작성한다.
+
 ## 슬롯 생성 idempotency
 
 - 규칙 기반 슬롯 생성 job은 `@@unique([expertId, programId, startsAt, endsAt])`
