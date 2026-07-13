@@ -5,6 +5,7 @@ import {
   generateRawToken,
   hashRateLimitKey,
   hashToken,
+  isWellFormedAuthToken,
 } from '@/modules/auth/tokens';
 
 describe('generateRawToken', () => {
@@ -15,6 +16,28 @@ describe('generateRawToken', () => {
 
   it('호출마다 다른 값을 생성한다', () => {
     expect(generateRawToken()).not.toBe(generateRawToken());
+  });
+});
+
+describe('isWellFormedAuthToken', () => {
+  it('generateRawToken 출력은 항상 형식 검증을 통과한다', () => {
+    for (let i = 0; i < 20; i += 1) {
+      expect(isWellFormedAuthToken(generateRawToken())).toBe(true);
+    }
+  });
+
+  it('43자가 아닌 길이는 거부한다', () => {
+    const token = generateRawToken();
+    expect(isWellFormedAuthToken(token.slice(0, 42))).toBe(false);
+    expect(isWellFormedAuthToken(`${token}A`)).toBe(false);
+    expect(isWellFormedAuthToken('')).toBe(false);
+  });
+
+  it('base64url 밖 문자(+, /, =)는 거부한다', () => {
+    const prefix42 = generateRawToken().slice(0, 42);
+    expect(isWellFormedAuthToken(`${prefix42}+`)).toBe(false);
+    expect(isWellFormedAuthToken(`${prefix42}/`)).toBe(false);
+    expect(isWellFormedAuthToken(`${prefix42}=`)).toBe(false);
   });
 });
 

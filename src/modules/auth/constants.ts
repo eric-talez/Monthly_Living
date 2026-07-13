@@ -12,6 +12,9 @@ export const PASSWORD_MIN_LENGTH = 8;
  */
 export const PASSWORD_MAX_BYTES = 72;
 
+/** RFC 5321 기준 메일 주소 상한 — 입력 경계용 (스키마 emailSchema.max) */
+export const EMAIL_MAX_LENGTH = 254;
+
 /** prisma/seed.ts의 hashSync(TEST_PASSWORD, 12)와 반드시 일치해야 한다. */
 export const BCRYPT_COST = 12;
 
@@ -33,6 +36,10 @@ export const AUTH_RATE_LIMITS = {
   resendVerificationByIp: { max: 10, windowMs: 60 * 60 * 1000 },
   resetRequestByEmail: { max: 3, windowMs: 60 * 60 * 1000 },
   resetRequestByIp: { max: 10, windowMs: 60 * 60 * 1000 },
+  // 재설정 완료(토큰 소비) 경로 — bcrypt 비용 유발을 IP·토큰 단위로 제한.
+  // token 키는 raw token이 아니라 sha256 hash를 HMAC 처리해 사용한다.
+  resetPasswordByIp: { max: 10, windowMs: 60 * 60 * 1000 },
+  resetPasswordByToken: { max: 5, windowMs: 15 * 60 * 1000 },
 } as const;
 
 export type AuthRateLimitName = keyof typeof AUTH_RATE_LIMITS;

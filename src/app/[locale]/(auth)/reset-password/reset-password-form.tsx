@@ -6,6 +6,7 @@ import { useActionState } from 'react';
 import { ErrorSummary } from '@/components/auth/error-summary';
 import { fieldErrorsOf } from '@/components/auth/field-errors';
 import { Link } from '@/i18n/navigation';
+import { PASSWORD_MAX_BYTES } from '@/modules/auth/constants';
 
 import { resetPasswordAction, type ResetPasswordActionState } from './actions';
 
@@ -50,12 +51,14 @@ export function ResetPasswordForm({ token }: { token: string }) {
         <label htmlFor="reset-password" className="block text-sm font-medium">
           {t('resetPassword.newPasswordLabel')}
         </label>
+        {/* maxLength는 UTF-16 문자 수 기준 편의 상한 — 바이트 상한은 서버 스키마가 최종 강제 */}
         <input
           id="reset-password"
           name="password"
           type="password"
           autoComplete="new-password"
           required
+          maxLength={PASSWORD_MAX_BYTES}
           aria-invalid={fieldErrors.password ? true : undefined}
           aria-describedby={fieldErrors.password ? 'reset-password-error' : 'reset-password-hint'}
           className={inputClassName}
@@ -80,6 +83,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           type="password"
           autoComplete="new-password"
           required
+          maxLength={PASSWORD_MAX_BYTES}
           aria-invalid={fieldErrors.passwordConfirm ? true : undefined}
           aria-describedby={
             fieldErrors.passwordConfirm ? 'reset-password-confirm-error' : undefined

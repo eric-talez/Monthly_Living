@@ -5,8 +5,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { ERROR_CODES, isAppError } from '@/lib/errors';
 import { prisma } from '@/lib/prisma';
 import { getClientIp } from '@/lib/request-ip';
-import { getSessionClaims, loginWithCredentials } from '@/modules/auth/service';
-import { loginSchema } from '@/modules/auth/validation';
+import { authorizeLogin, getSessionClaims } from '@/modules/auth/service';
 
 /**
  * Auth.js v5 구성 — JWT 세션 전략 (docs/decisions/authjs-session-strategy.md).
@@ -36,14 +35,11 @@ export const authConfig = {
         email: { label: 'email' },
         password: { label: 'password', type: 'password' },
       },
+      // 스키마 검증 포함 검증 본체는 service.authorizeLogin — 여기는 IP 추출과
+      // RATE_LIMITED → CredentialsSignin 변환만 담당하는 얇은 어댑터로 유지한다
       authorize: async (credentials, request) => {
-        const parsed = loginSchema.safeParse(credentials);
-        if (!parsed.success) {
-          // 형식 오류도 일반 실패와 동일하게 — null이면 core가 CredentialsSignin으로 변환한다
-          return null;
-        }
         try {
-          return await loginWithCredentials(parsed.data, {
+          return await authorizeLogin(credentials, {
             ipAddress: getClientIp(request.headers),
           });
         } catch (error) {

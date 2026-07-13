@@ -15,6 +15,12 @@
 3. 따라서 **IP 키 rate limit은 best-effort 보조 장치**다. 계정 보호의 1차 수단은
    email 키 limit이며, `LoginAttempt`가 email·IP를 모두 감사 기록으로 남긴다.
 4. **IP를 근거로 하는 보안 결정(인가·차단 목록 등)은 두지 않는다.**
+5. **`UNKNOWN_IP('unknown')`는 모든 헤더 없는 요청의 공용 키가 된다**: XFF가 없으면
+   전 요청이 단일 IP 버킷을 공유한다. IP limiter를 먼저 소비하는 현재 구조에서 이
+   버킷이 소진되면 헤더 없는 정상 사용자 전원이 email limiter 도달 전에 차단되며,
+   특히 재설정 완료(`resetPasswordByIp`)는 email 키 완화 장치도 없다. production
+   배포에서는 신뢰 프록시가 XFF를 rewrite하는 위 2번 계약이 전제되어야 하고, 이
+   계약 하에서 `'unknown'`은 예외 경로(직접 소켓 연결 등)로만 남는다 (MVP 수용).
 
 ## Rate limiter — port/adapter 구조, MVP는 memory 구현
 
@@ -24,8 +30,21 @@
   늘어나고 재시작 시 초기화된다 → production 전환 조건은 Redis adapter (README 출시 Gate).
 - 정리는 setInterval 없이 수행한다(dev HMR 타이머 중복 방지): 접근 키 lazy prune +
   키 수 임계치 초과 시 전체 sweep. 저장소는 `globalThis` 레지스트리(HMR에도 카운터 유지).
+  정상 형식의 무작위 token·위조 IP로 요청을 뿌리면 sweep 임계치(10k 키) 전까지 버킷이
+  누적된다 — 무작위 email로 `loginByEmail`을 채우는 것과 동일한 기존 노출로, MVP 수용.
 - 한도·window는 `src/modules/auth/constants.ts`의 `AUTH_RATE_LIMITS` 상수로만 관리한다:
-  로그인(email·IP 각각), 회원가입(IP), 인증 메일 재전송(email·IP), 재설정 요청(email·IP).
+  로그인(email·IP 각각), 회원가입(IP), 인증 메일 재전송(email·IP), 재설정 요청(email·IP),
+  재설정 완료(IP·token 각각 — token 키는 raw token이 아니라 sha256 hash를 HMAC 처리).
+
+## limiter 소비 순서 — 복합 flow는 IP를 먼저 소비한다
+
+email·IP 두 limiter를 함께 쓰는 flow(로그인, 인증 메일 재전송, 재설정 요청)는
+**IP limiter → email limiter** 순서로 소비한다. email을 먼저 소비하면, 이미 IP 한도에
+걸린 공격자가 피해자 이메일로 요청을 반복해 **피해자의 email 한도를 대신 소진**시키는
+계정 잠금(DoS)이 가능하기 때문이다. IP 단계에서 차단된 요청은 email limiter를 건드리지
+않는다(첫 차단에서 즉시 throw). 재설정 완료는 같은 원칙으로 **IP → token** 순서다.
+회귀 테스트: login/password-reset/verify-email 통합 테스트의 "IP limiter가 email
+limiter보다 먼저 소비된다" 케이스.
 
 ## limiter 키 — raw 값 대신 HMAC
 

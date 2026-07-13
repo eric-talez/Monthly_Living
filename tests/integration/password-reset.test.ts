@@ -2,8 +2,9 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { ERROR_CODES } from '@/lib/errors';
 import { PASSWORD_RESET_TOKEN_TTL_MS } from '@/modules/auth/constants';
+import { hashPassword } from '@/modules/auth/passwords';
 import { loginWithCredentials, requestPasswordReset, resetPassword } from '@/modules/auth/service';
-import { hashToken } from '@/modules/auth/tokens';
+import { generateRawToken, hashToken } from '@/modules/auth/tokens';
 
 import { cleanupOwnData, disconnect, testEmail, testPrisma } from './helpers/db';
 import { createTestDeps, extractTokenFromEmail } from './helpers/deps';
@@ -63,6 +64,30 @@ describe('requestPasswordReset', () => {
       requestPasswordReset({ email: testEmail('reset-rl-ip-2') }, ctx, ipLimited.deps),
     ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
   });
+
+  it('IP limiter가 email limiter보다 먼저 소비된다 — 차단된 요청이 피해자 email 한도를 태우지 않는다', async () => {
+    const victim = await createRegisteredUser('reset-order-victim');
+    const { deps, sentEmails } = createTestDeps({
+      limiterMax: { resetRequestByIp: 1, resetRequestByEmail: 1 },
+    });
+
+    // 1) 공격자 IP 한도(1)를 다른 이메일로 소진
+    const attackerCtx = { ...TEST_CTX, ipAddress: '198.51.100.10' };
+    await requestPasswordReset({ email: testEmail('reset-order-other') }, attackerCtx, deps);
+
+    // 2) 같은 IP에서 피해자 이메일 요청 → IP 단계에서 차단
+    await expect(
+      requestPasswordReset({ email: victim.email }, attackerCtx, deps),
+    ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
+
+    // 3) 다른 IP에서 피해자 이메일 첫 요청은 허용 — email 한도(1)가 소비되지 않았음을 증명.
+    //    email limiter를 먼저 소비하는 구현이라면 2단계가 한도를 태워 여기서 차단된다.
+    const victimCtx = { ...TEST_CTX, ipAddress: '198.51.100.20' };
+    await expect(
+      requestPasswordReset({ email: victim.email }, victimCtx, deps),
+    ).resolves.toBeUndefined();
+    expect(sentEmails.some((message) => message.to === victim.email)).toBe(true);
+  });
 });
 
 describe('resetPassword', () => {
@@ -82,7 +107,9 @@ describe('resetPassword', () => {
     });
 
     const newPassword = 'NewPass1234!';
-    await expect(resetPassword({ rawToken, newPassword }, testDeps.deps)).resolves.toBe('success');
+    await expect(resetPassword({ rawToken, newPassword }, CTX, testDeps.deps)).resolves.toBe(
+      'success',
+    );
 
     // 새 비밀번호로만 로그인된다
     await expect(
@@ -105,7 +132,7 @@ describe('resetPassword', () => {
     const rawToken = extractTokenFromEmail(sentEmails[0]);
 
     const { deps } = createTestDeps();
-    await expect(resetPassword({ rawToken, newPassword: 'NewPass1234!' }, deps)).resolves.toBe(
+    await expect(resetPassword({ rawToken, newPassword: 'NewPass1234!' }, CTX, deps)).resolves.toBe(
       'expired',
     );
 
@@ -118,10 +145,10 @@ describe('resetPassword', () => {
     const rawToken = extractTokenFromEmail(testDeps.sentEmails[testDeps.sentEmails.length - 1]);
 
     await expect(
-      resetPassword({ rawToken, newPassword: 'FirstNew1234!' }, testDeps.deps),
+      resetPassword({ rawToken, newPassword: 'FirstNew1234!' }, CTX, testDeps.deps),
     ).resolves.toBe('success');
     await expect(
-      resetPassword({ rawToken, newPassword: 'SecondNew1234!' }, testDeps.deps),
+      resetPassword({ rawToken, newPassword: 'SecondNew1234!' }, CTX, testDeps.deps),
     ).resolves.toBe('invalid');
 
     await expect(
@@ -135,11 +162,86 @@ describe('resetPassword', () => {
   it('무효 토큰은 invalid', async () => {
     const { deps } = createTestDeps();
     await expect(
-      resetPassword({ rawToken: 'garbage', newPassword: 'NewPass1234!' }, deps),
+      resetPassword({ rawToken: 'garbage', newPassword: 'NewPass1234!' }, CTX, deps),
     ).resolves.toBe('invalid');
-    await expect(resetPassword({ rawToken: '', newPassword: 'NewPass1234!' }, deps)).resolves.toBe(
-      'invalid',
+    await expect(
+      resetPassword({ rawToken: '', newPassword: 'NewPass1234!' }, CTX, deps),
+    ).resolves.toBe('invalid');
+  });
+
+  it('잘못된 형식 토큰은 bcrypt를 호출하지 않는다', async () => {
+    let hashCalls = 0;
+    const { deps } = createTestDeps({
+      hashPassword: async (plain) => {
+        hashCalls += 1;
+        return hashPassword(plain);
+      },
+    });
+
+    const wellFormed = generateRawToken();
+    const malformed = [
+      wellFormed.slice(0, 42), // 43자 미만
+      `${wellFormed}A`, // 43자 초과
+      `${wellFormed.slice(0, 42)}+`, // base64url 밖 문자
+      'x'.repeat(10_000), // 임의 장문 입력
+    ];
+    for (const rawToken of malformed) {
+      await expect(
+        resetPassword({ rawToken, newPassword: 'NewPass1234!' }, CTX, deps),
+      ).resolves.toBe('invalid');
+    }
+    expect(hashCalls).toBe(0);
+  });
+
+  it('존재하지 않는 정상 형식 토큰은 bcrypt 미호출 — 유효 토큰은 정확히 1회 호출(positive control)', async () => {
+    const { email } = await createRegisteredUser('reset-preflight');
+    let hashCalls = 0;
+    const { deps, sentEmails } = createTestDeps({
+      hashPassword: async (plain) => {
+        hashCalls += 1;
+        return hashPassword(plain);
+      },
+    });
+
+    // 형식은 정상이지만 DB에 없는 토큰 — 형식 검사가 아니라 preflight가 차단함을 증명
+    await expect(
+      resetPassword({ rawToken: generateRawToken(), newPassword: 'NewPass1234!' }, CTX, deps),
+    ).resolves.toBe('invalid');
+    expect(hashCalls).toBe(0);
+
+    // positive control — 같은 스파이가 유효 토큰 경로에서는 정확히 1회 호출된다 (배선 오류로 인한 공허한 통과 방지)
+    await requestPasswordReset({ email }, TEST_CTX, deps);
+    const rawToken = extractTokenFromEmail(sentEmails[sentEmails.length - 1]);
+    await expect(resetPassword({ rawToken, newPassword: 'NewPass1234!' }, CTX, deps)).resolves.toBe(
+      'success',
     );
+    expect(hashCalls).toBe(1);
+  });
+
+  it('재설정 완료 IP rate limit이 발동한다', async () => {
+    const { deps } = createTestDeps({ limiterMax: { resetPasswordByIp: 1 } });
+    const ctx = { ipAddress: '203.0.113.91' };
+    await expect(
+      resetPassword({ rawToken: generateRawToken(), newPassword: 'NewPass1234!' }, ctx, deps),
+    ).resolves.toBe('invalid');
+    await expect(
+      resetPassword({ rawToken: generateRawToken(), newPassword: 'NewPass1234!' }, ctx, deps),
+    ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
+  });
+
+  it('재설정 완료 token rate limit이 발동한다 — 같은 토큰만 차단되고 다른 토큰은 허용', async () => {
+    const { deps } = createTestDeps({ limiterMax: { resetPasswordByToken: 1 } });
+    const hammered = generateRawToken();
+    await expect(
+      resetPassword({ rawToken: hammered, newPassword: 'NewPass1234!' }, CTX, deps),
+    ).resolves.toBe('invalid');
+    await expect(
+      resetPassword({ rawToken: hammered, newPassword: 'NewPass1234!' }, CTX, deps),
+    ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
+    // 다른 토큰은 token limiter 기준 새 키 — IP 한도 내에서 그대로 허용된다
+    await expect(
+      resetPassword({ rawToken: generateRawToken(), newPassword: 'NewPass1234!' }, CTX, deps),
+    ).resolves.toBe('invalid');
   });
 
   it('동시 재설정: 같은 토큰 병렬 소비 시 정확히 하나만 success', async () => {
@@ -148,8 +250,8 @@ describe('resetPassword', () => {
     const rawToken = extractTokenFromEmail(testDeps.sentEmails[testDeps.sentEmails.length - 1]);
 
     const [r1, r2] = await Promise.all([
-      resetPassword({ rawToken, newPassword: 'RaceOne1234!' }, testDeps.deps),
-      resetPassword({ rawToken, newPassword: 'RaceTwo1234!' }, testDeps.deps),
+      resetPassword({ rawToken, newPassword: 'RaceOne1234!' }, CTX, testDeps.deps),
+      resetPassword({ rawToken, newPassword: 'RaceTwo1234!' }, CTX, testDeps.deps),
     ]);
 
     expect([r1, r2].filter((r) => r === 'success')).toHaveLength(1);

@@ -6,6 +6,7 @@ import { useActionState } from 'react';
 import { ErrorSummary } from '@/components/auth/error-summary';
 import { fieldErrorsOf } from '@/components/auth/field-errors';
 import { Link } from '@/i18n/navigation';
+import { EMAIL_MAX_LENGTH } from '@/modules/auth/constants';
 
 import { forgotPasswordAction, type ForgotPasswordActionState } from './actions';
 
@@ -44,6 +45,7 @@ export function ForgotPasswordForm() {
           type="email"
           autoComplete="email"
           required
+          maxLength={EMAIL_MAX_LENGTH}
           aria-invalid={fieldErrors.email ? true : undefined}
           aria-describedby={fieldErrors.email ? 'forgot-email-error' : undefined}
           className="border-border bg-background w-full border px-3 py-2 text-sm focus-visible:outline-2"

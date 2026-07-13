@@ -99,7 +99,11 @@ describe('실세션: Credentials 로그인 → session endpoint', () => {
     await requestPasswordReset({ email }, TEST_CTX, testDeps.deps);
     const rawToken = extractTokenFromEmail(testDeps.sentEmails[testDeps.sentEmails.length - 1]);
     await expect(
-      resetPassword({ rawToken, newPassword: 'AfterReset1234!' }, testDeps.deps),
+      resetPassword(
+        { rawToken, newPassword: 'AfterReset1234!' },
+        { ipAddress: TEST_CTX.ipAddress },
+        testDeps.deps,
+      ),
     ).resolves.toBe('success');
 
     // 재설정 전 쿠키로는 더 이상 세션을 얻을 수 없다

@@ -2,6 +2,7 @@ import { createMemoryRateLimiter } from '@/adapters/rate-limit/memory';
 import type { EmailMessage } from '@/adapters/email/types';
 import { AUTH_RATE_LIMITS, type AuthRateLimitName } from '@/modules/auth/constants';
 import type { AuthServiceDeps } from '@/modules/auth/deps';
+import { hashPassword, verifyPassword } from '@/modules/auth/passwords';
 import type { AuthRateLimiters } from '@/modules/auth/rate-limit';
 import { generateRawToken } from '@/modules/auth/tokens';
 
@@ -55,6 +56,9 @@ export function createTestDeps(
     rateLimiters: createIsolatedRateLimiters(limiterMax),
     now: () => new Date(),
     generateToken: generateRawToken,
+    // 실제 bcrypt 구현이 기본값 — "bcrypt 미호출" 테스트는 카운팅 래퍼를 override로 주입한다
+    hashPassword,
+    verifyPassword,
     ...depOverrides,
   };
 

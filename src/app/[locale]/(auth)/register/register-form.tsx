@@ -6,6 +6,7 @@ import { useActionState } from 'react';
 import { ErrorSummary } from '@/components/auth/error-summary';
 import { fieldErrorsOf } from '@/components/auth/field-errors';
 import { Link } from '@/i18n/navigation';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES } from '@/modules/auth/constants';
 
 import { registerAction, type RegisterActionState } from './actions';
 
@@ -18,11 +19,13 @@ interface FieldProps {
   label: string;
   type: string;
   autoComplete: string;
+  /** UTF-16 문자 수 기준 편의 상한 — 바이트 상한은 서버 스키마가 최종 강제 */
+  maxLength?: number;
   error?: string;
   hint?: string;
 }
 
-function TextField({ id, name, label, type, autoComplete, error, hint }: FieldProps) {
+function TextField({ id, name, label, type, autoComplete, maxLength, error, hint }: FieldProps) {
   const describedBy =
     [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(' ') ||
     undefined;
@@ -38,6 +41,7 @@ function TextField({ id, name, label, type, autoComplete, error, hint }: FieldPr
         type={type}
         autoComplete={autoComplete}
         required
+        maxLength={maxLength}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={inputClassName}
@@ -113,6 +117,7 @@ export function RegisterForm() {
         name="email"
         type="email"
         autoComplete="email"
+        maxLength={EMAIL_MAX_LENGTH}
         label={t('common.emailLabel')}
         error={fieldErrors.email}
       />
@@ -121,6 +126,7 @@ export function RegisterForm() {
         name="password"
         type="password"
         autoComplete="new-password"
+        maxLength={PASSWORD_MAX_BYTES}
         label={t('common.passwordLabel')}
         hint={t('register.passwordHint')}
         error={fieldErrors.password}
@@ -130,6 +136,7 @@ export function RegisterForm() {
         name="passwordConfirm"
         type="password"
         autoComplete="new-password"
+        maxLength={PASSWORD_MAX_BYTES}
         label={t('register.passwordConfirmLabel')}
         error={fieldErrors.passwordConfirm}
       />

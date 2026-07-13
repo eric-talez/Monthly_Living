@@ -2,7 +2,8 @@ import bcrypt from 'bcryptjs';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { ERROR_CODES } from '@/lib/errors';
-import { getSessionClaims, loginWithCredentials } from '@/modules/auth/service';
+import { verifyPassword } from '@/modules/auth/passwords';
+import { authorizeLogin, getSessionClaims, loginWithCredentials } from '@/modules/auth/service';
 
 import { TEST_PASSWORD, userSeeds } from '../../prisma/seed-data/users';
 import { cleanupOwnData, disconnect, testEmail, testPrisma } from './helpers/db';
@@ -154,6 +155,42 @@ describe('loginWithCredentials', () => {
     ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
   });
 
+  it('IP limiter가 email limiter보다 먼저 소비된다 — 차단된 시도가 피해자 email 한도를 태우지 않는다', async () => {
+    const victim = await createRegisteredUser('login-order-victim', {
+      testDeps: createTestDeps({ limiterMax: { loginByIp: 1, loginByEmail: 1 } }),
+    });
+    const deps = victim.testDeps.deps;
+
+    // 1) 공격자 IP 한도(1)를 다른 이메일로 소진
+    const attackerCtx = { ipAddress: '198.51.100.30' };
+    await loginWithCredentials(
+      { email: testEmail('login-order-other'), password: 'Wrong1234!' },
+      attackerCtx,
+      deps,
+    );
+
+    // 2) 같은 IP에서 피해자 이메일 시도 → IP 단계에서 차단
+    await expect(
+      loginWithCredentials({ email: victim.email, password: 'Wrong1234!' }, attackerCtx, deps),
+    ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
+
+    // 3) 다른 IP에서 피해자의 첫 정상 로그인은 성공 — email 한도(1)가 소비되지 않았음을 증명.
+    //    email limiter를 먼저 소비하는 구현이라면 2단계가 한도를 태워 여기서 차단된다.
+    const victimCtx = { ipAddress: '198.51.100.31' };
+    await expect(
+      loginWithCredentials({ email: victim.email, password: victim.password }, victimCtx, deps),
+    ).resolves.not.toBeNull();
+  });
+
+  it('정확히 72바이트 비밀번호는 정상 로그인된다 (경계 대조군)', async () => {
+    const exact72 = `A1${'a'.repeat(70)}`; // ASCII 72자 = 72바이트, 영문·숫자 포함(가입 정책 통과)
+    const { email, testDeps } = await createRegisteredUser('login-72b', { password: exact72 });
+
+    await expect(
+      loginWithCredentials({ email, password: exact72 }, CTX, testDeps.deps),
+    ).resolves.not.toBeNull();
+  });
+
   it('seed 동등성: seed와 동일한 입력·cost로 만든 계정이 TEST_PASSWORD로 로그인된다', async () => {
     // seed 계정을 test DB에 literal 이메일로 재현하지 않는다 — runId prefix 이메일에
     // prisma/seed.ts와 동일한 방식(hashSync, cost 12)·동일한 필드로 재현해 검증한다.
@@ -180,6 +217,50 @@ describe('loginWithCredentials', () => {
     const user = await loginWithCredentials({ email, password: TEST_PASSWORD }, CTX, deps);
     expect(user).not.toBeNull();
     expect(user?.role).toBe('TRAVELER');
+  });
+});
+
+describe('authorizeLogin (Auth.js credentials authorize 검증 본체)', () => {
+  it('초과 길이 비밀번호는 스키마에서 거부되어 bcrypt 비교까지 도달하지 않는다', async () => {
+    const exact72 = `A1${'a'.repeat(70)}`; // 72바이트 — 가입 가능한 최대 길이
+    const { email } = await createRegisteredUser('login-overlong', { password: exact72 });
+
+    let verifyCalls = 0;
+    const { deps } = createTestDeps({
+      verifyPassword: async (plain, passwordHash) => {
+        verifyCalls += 1;
+        return verifyPassword(plain, passwordHash);
+      },
+    });
+
+    // bcrypt 72바이트 silent truncation 시나리오: 정상 72바이트 비밀번호 뒤에 접미사를
+    // 붙인 입력은 bcrypt에 도달하면 잘린 채 일치해 버린다 — 스키마가 그 전에 거부해야 한다
+    await expect(
+      authorizeLogin({ email, password: `${exact72}zzz` }, CTX, deps),
+    ).resolves.toBeNull();
+    expect(verifyCalls).toBe(0);
+
+    // positive control — 같은 스파이 경로에서 정상 입력은 bcrypt 비교 1회로 로그인된다
+    await expect(authorizeLogin({ email, password: exact72 }, CTX, deps)).resolves.not.toBeNull();
+    expect(verifyCalls).toBe(1);
+  });
+
+  it('스키마 실패(빈 비밀번호·형식 오류 이메일)는 서비스 호출 없이 null로 수렴한다', async () => {
+    let verifyCalls = 0;
+    const { deps } = createTestDeps({
+      verifyPassword: async (plain, passwordHash) => {
+        verifyCalls += 1;
+        return verifyPassword(plain, passwordHash);
+      },
+    });
+
+    await expect(
+      authorizeLogin({ email: 'not-an-email', password: 'Whatever1!' }, CTX, deps),
+    ).resolves.toBeNull();
+    await expect(
+      authorizeLogin({ email: testEmail('authorize-empty'), password: '' }, CTX, deps),
+    ).resolves.toBeNull();
+    expect(verifyCalls).toBe(0);
   });
 });
 

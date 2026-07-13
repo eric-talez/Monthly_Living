@@ -162,4 +162,33 @@ describe('resendVerificationEmail', () => {
       resendVerificationEmail({ email: testEmail('resend-rl-ip-2') }, ctx, ipLimited.deps),
     ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
   });
+
+  it('IP limiter가 email limiter보다 먼저 소비된다 — 차단된 요청이 피해자 email 한도를 태우지 않는다', async () => {
+    const testDeps = createTestDeps({
+      limiterMax: { resendVerificationByIp: 1, resendVerificationByEmail: 1 },
+    });
+    const victim = await createRegisteredUser('resend-order-victim', {
+      verify: false,
+      testDeps,
+    });
+    const { deps, sentEmails } = testDeps;
+
+    // 1) 공격자 IP 한도(1)를 다른 이메일로 소진 (미가입 이메일도 limiter는 소비된다)
+    const attackerCtx = { ...TEST_CTX, ipAddress: '198.51.100.40' };
+    await resendVerificationEmail({ email: testEmail('resend-order-other') }, attackerCtx, deps);
+
+    // 2) 같은 IP에서 피해자 이메일 요청 → IP 단계에서 차단
+    await expect(
+      resendVerificationEmail({ email: victim.email }, attackerCtx, deps),
+    ).rejects.toMatchObject({ code: ERROR_CODES.RATE_LIMITED });
+
+    // 3) 다른 IP에서 피해자 이메일 첫 요청은 허용 — email 한도(1)가 소비되지 않았음을 증명.
+    //    email limiter를 먼저 소비하는 구현이라면 2단계가 한도를 태워 여기서 차단된다.
+    const victimCtx = { ...TEST_CTX, ipAddress: '198.51.100.41' };
+    await expect(
+      resendVerificationEmail({ email: victim.email }, victimCtx, deps),
+    ).resolves.toBeUndefined();
+    // 가입 인증 메일(1) + 재전송(1)
+    expect(sentEmails.filter((message) => message.to === victim.email)).toHaveLength(2);
+  });
 });

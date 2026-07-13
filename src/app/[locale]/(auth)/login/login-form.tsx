@@ -5,6 +5,7 @@ import { useActionState } from 'react';
 
 import { ErrorSummary } from '@/components/auth/error-summary';
 import { Link } from '@/i18n/navigation';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES } from '@/modules/auth/constants';
 
 import { loginAction, type LoginActionState } from './actions';
 
@@ -37,6 +38,7 @@ export function LoginForm() {
           type="email"
           autoComplete="email"
           required
+          maxLength={EMAIL_MAX_LENGTH}
           aria-invalid={errorMessage ? true : undefined}
           className={inputClassName}
         />
@@ -54,12 +56,14 @@ export function LoginForm() {
             {t('login.forgotPasswordLink')}
           </Link>
         </div>
+        {/* maxLength는 UTF-16 문자 수 기준 편의 상한 — 바이트 상한은 서버 스키마가 최종 강제 */}
         <input
           id="login-password"
           name="password"
           type="password"
           autoComplete="current-password"
           required
+          maxLength={PASSWORD_MAX_BYTES}
           aria-invalid={errorMessage ? true : undefined}
           className={inputClassName}
         />

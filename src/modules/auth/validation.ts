@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from './constants';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from './constants';
 
 /**
  * 인증 입력 스키마 (순수 모듈 — DB·env import 금지).
@@ -16,6 +16,7 @@ export const emailSchema = z
   .string('emailInvalid')
   .trim()
   .toLowerCase()
+  .max(EMAIL_MAX_LENGTH, 'emailInvalid')
   .pipe(z.email('emailInvalid'));
 
 /**
@@ -29,10 +30,20 @@ export const passwordSchema = z
   .refine((value) => utf8ByteLength(value) <= PASSWORD_MAX_BYTES, 'passwordTooLong')
   .refine((value) => /[A-Za-z]/.test(value) && /[0-9]/.test(value), 'passwordNeedsLetterAndDigit');
 
-/** 로그인은 정책 검사를 하지 않는다 — 존재하는 비밀번호와의 일치만 본다 */
+/**
+ * 로그인 비밀번호는 복잡도 정책(최소 8자·영문/숫자)을 검사하지 않는다 —
+ * 기존 계정 호환을 위해 존재하는 비밀번호와의 일치만 본다.
+ * 단 bcrypt 72바이트 silent truncation 상한은 로그인에도 강제한다:
+ * 상한이 없으면 "정상 72바이트 비밀번호 + 임의 접미사"가 잘린 채 일치해 버린다.
+ */
+export const loginPasswordSchema = z
+  .string('required')
+  .min(1, 'required')
+  .refine((value) => utf8ByteLength(value) <= PASSWORD_MAX_BYTES, 'passwordTooLong');
+
 export const loginSchema = z.object({
   email: emailSchema,
-  password: z.string('required').min(1, 'required'),
+  password: loginPasswordSchema,
 });
 
 export const registerSchema = z
