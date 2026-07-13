@@ -57,12 +57,12 @@ export type RegisterOutcome = 'created' | 'existing-account';
 export type VerifyEmailResult = 'verified' | 'already-verified' | 'expired' | 'invalid';
 export type ResetPasswordResult = 'success' | 'expired' | 'invalid';
 
-/** limiter 키 — raw 값(email/IP)이 limiter 메모리에 남지 않도록 HMAC 처리 */
-function limiterKey(value: string): string {
+/** limiter 키 — raw 값(email/IP/userId/token hash)이 limiter 메모리에 남지 않도록 HMAC 처리 */
+export function limiterKey(value: string): string {
   return hashRateLimitKey(env.AUTH_SECRET, value);
 }
 
-async function enforceLimit(limiter: RateLimiter, key: string): Promise<void> {
+export async function enforceLimit(limiter: RateLimiter, key: string): Promise<void> {
   const decision = await limiter.limit(key);
   if (!decision.allowed) {
     throw new AppError(ERROR_CODES.RATE_LIMITED, 'Too many requests.', {
@@ -252,9 +252,9 @@ export async function getSessionClaims(
  * 새 토큰 발급 시 기존 미사용 토큰을 삭제하고 신규 생성한다 (사용된 토큰은 감사용 보존).
  * 동시 발급으로 활성 토큰이 복수가 되지 않도록 대상 User row를 잠근 뒤 수행한다.
  */
-async function replaceToken(
+export async function replaceToken(
   deps: AuthServiceDeps,
-  model: 'emailVerificationToken' | 'passwordResetToken',
+  model: 'emailVerificationToken' | 'passwordResetToken' | 'accountDeletionToken',
   userId: string,
   ttlMs: number,
 ): Promise<string> {
@@ -267,9 +267,12 @@ async function replaceToken(
     if (model === 'emailVerificationToken') {
       await tx.emailVerificationToken.deleteMany({ where: { userId, usedAt: null } });
       await tx.emailVerificationToken.create({ data: { userId, tokenHash, expiresAt } });
-    } else {
+    } else if (model === 'passwordResetToken') {
       await tx.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
       await tx.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
+    } else {
+      await tx.accountDeletionToken.deleteMany({ where: { userId, usedAt: null } });
+      await tx.accountDeletionToken.create({ data: { userId, tokenHash, expiresAt } });
     }
   });
 
@@ -471,7 +474,7 @@ export async function resetPassword(
 }
 
 /** 메일 발송 실패는 흐름을 깨지 않는다 — 재전송 경로가 있으므로 기록만 남긴다 (본문·토큰 미포함) */
-async function sendAuthEmail(
+export async function sendAuthEmail(
   deps: AuthServiceDeps,
   message: Parameters<AuthServiceDeps['emailProvider']['send']>[0],
 ): Promise<void> {

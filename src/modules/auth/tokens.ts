@@ -12,16 +12,8 @@ export function generateRawToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-/**
- * generateRawToken 출력의 정확한 형식 — 32바이트 base64url은 항상 43자다.
- * 소비 경로(resetPassword/verifyEmail)가 hash·DB 조회·bcrypt 전에 이 형식으로
- * 선검증해 임의 길이 입력으로 비용을 유발하는 것을 차단한다.
- */
-export const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-
-export function isWellFormedAuthToken(rawToken: string): boolean {
-  return AUTH_TOKEN_PATTERN.test(rawToken);
-}
+// 형식 검증은 crypto-free 모듈로 분리 (proxy.ts가 사용) — 기존 import 호환용 re-export.
+export { AUTH_TOKEN_PATTERN, isWellFormedAuthToken } from './token-pattern';
 
 /** DB 저장용 토큰 hash — 원문은 절대 저장·로그하지 않는다 */
 export function hashToken(rawToken: string): string {

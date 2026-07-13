@@ -3,9 +3,9 @@
 제주 · 태국(방콕/치앙마이/푸껫/코사무이) · 베트남(다낭/호찌민/하노이/나트랑)에서 목적 기반
 한달살기 프로그램을 찾고, 현지 전문가와 연결·예약·결제·메시지까지 이어지는 프리미엄 플랫폼.
 
-> **현재 상태: 개발 진행 중 (Phase 1C-2A 완료 — Google/Kakao OAuth\* / Phase 1C 진행 중)**
-> \* 코드·자동 테스트 완료 기준 — 실제 provider credential을 사용한 외부 왕복 E2E는
-> Google Console/Kakao Developers 등록 후 별도 검증 대기 (PROGRESS 참고).
+> **현재 상태: 개발 진행 중 (Phase 1C-2B-1 완료 — 여행자 계정 탈퇴\* / Phase 1C-2B 진행 중)**
+> \* 코드·자동 테스트 완료 기준 — OAuth 실제 provider credential 왕복 E2E와 실 email
+> provider(탈퇴 확인 메일 포함)는 등록·도입 후 별도 검증 대기 (PROGRESS 참고).
 > 이 프로젝트의 목표 산출물은 **"production architecture를 갖춘 staging-ready MVP"** 입니다.
 > Mock Payment / Console Email / Local FS Storage 상태에서는 production launch 완료로
 > 간주하지 않으며, 실제 출시 조건은 아래 [출시 Gate](#출시-gate)를 따릅니다.
@@ -21,7 +21,10 @@
 - **Auth.js v5 (JWT 세션)** — 이메일/비밀번호 Credentials, 이메일 인증·비밀번호 재설정(해시 저장
   단일 사용 토큰), memory rate limit, Google/Kakao OAuth(선택 활성화 — env 쌍 필수, provider
   검증 이메일만 신뢰, 자동 계정 연결 없음·token 미저장:
-  [결정 문서](docs/decisions/oauth-account-linking.md)) — 계정 탈퇴·온보딩은 Phase 1C-2B 예정
+  [결정 문서](docs/decisions/oauth-account-linking.md)), 여행자 계정 탈퇴(이메일 토큰 확인 +
+  구조화 계정 PII 익명화·tombstone, EXPERT/ADMIN 미지원:
+  [결정 문서](docs/decisions/account-deletion-and-anonymization.md)) — 온보딩·역할별 redirect는
+  Phase 1C-2B 잔여
 - **Vitest 4** — unit + DB 통합 테스트(`TEST_DATABASE_URL` 전용) / Playwright·CI — _Phase 1D 예정_
 
 ## 로컬 개발 실행

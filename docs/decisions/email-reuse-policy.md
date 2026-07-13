@@ -1,10 +1,22 @@
-# 결정: User.email 전역 unique — soft delete 후 이메일 재사용 불가 (초기 버전)
+# 결정: User.email 전역 unique — 하드 익명화로 이메일 재사용 (1C-2B-1 구현)
 
 ## 결정
 
-- `User.email`은 **전역 unique**를 유지한다. soft delete(`deletedAt` 설정)된 계정의
-  이메일도 unique 제약을 계속 점유하며, 같은 이메일로 재가입할 수 없다.
-- `deletedAt IS NULL` 조건의 partial unique index는 사용하지 않는다.
+- `User.email`은 **전역 unique**를 유지한다. `deletedAt IS NULL` 조건의
+  partial unique index는 사용하지 않는다.
+- **삭제 전**: soft delete 여부와 무관하게 이메일은 unique 제약을 점유하며,
+  같은 이메일로 재가입할 수 없다.
+- **탈퇴 commit 후(1C-2B-1 구현)**: 탈퇴 transaction이 `email`을
+  `deleted+<userId>@deleted.invalid` tombstone으로 치환하므로 **원 이메일은
+  commit 즉시 재사용 가능**하다. unique 제약은 그대로 유지된다.
+- **신규 가입은 반드시 새로운 User ID**로 생성된다. 원 이메일 재가입
+  (credentials·OAuth 모두)은 새 User row를 만들며, 이전 사용자의 예약·리뷰·
+  결제 기록은 tombstone User id에 남는다 — **새 User와 절대 연결되지 않는다**
+  (통합 테스트로 고정: credentials 재가입·동일 provider identity OAuth 재가입
+  모두 새 id, 과거 기록 비연결).
+
+전체 탈퇴·익명화 설계:
+[account-deletion-and-anonymization.md](account-deletion-and-anonymization.md).
 
 ## 이유
 
@@ -13,24 +25,22 @@
    비결정적으로 동작할 수 있다.
 2. partial unique index는 Prisma 스키마로 표현되지 않아 drift·마이그레이션 관리
    비용이 생기고, 삭제 계정 복구 시 충돌 시나리오가 복잡해진다.
-3. 초기 서비스에서 이메일 재사용 요구는 드물고, 잘못 구현하면 이전 사용자의
-   데이터(리뷰·예약 이력)가 새 사용자와 연결되는 개인정보 사고로 이어질 수 있다.
+3. 잘못 구현하면 이전 사용자의 데이터(리뷰·예약 이력)가 새 사용자와 연결되는
+   개인정보 사고로 이어질 수 있다 — tombstone id 분리가 이를 구조적으로 차단한다.
 
 ## 공식 PrismaAdapter `deleteUser()`와의 충돌 (PR #1 리뷰 반영)
 
 공식 `@auth/prisma-adapter`의 `deleteUser()`는 **hard delete**를 수행하므로
-이 프로젝트의 soft delete 정책과 충돌한다. **Phase 1C의 계정 탈퇴는 adapter의
-`deleteUser()`를 직접 호출하지 않고**, 별도 서비스 로직에서 `status=DELETED`와
-`deletedAt` 설정, 개인정보 익명화(아래 하드 익명화 절차)를 수행한다.
+이 프로젝트의 soft delete 정책과 충돌한다. **계정 탈퇴는 adapter의 `deleteUser()`를
+직접 호출하지 않고**(custom adapter가 fail-closed로 차단), `modules/users`의
+탈퇴 서비스가 단일 transaction에서 `status=DELETED`·`deletedAt` 설정과
+구조화 계정 PII 익명화를 수행한다.
 상세: [authjs-session-strategy.md](authjs-session-strategy.md).
 
-## 재사용이 필요해질 경우의 마이그레이션 경로 (별도 승인 필요)
+## 기각한 대안
 
-1. **하드 익명화 방식(권장)**: 계정 삭제 확정 시점(유예 기간 후)에
-   `email`을 `deleted+<userId>@deleted.invalid` 형태로 치환하고
-   개인정보 필드를 익명화, 연결된 `Account`·토큰 행을 삭제한다.
-   원 이메일은 즉시 재사용 가능해지며 unique는 그대로 유지된다.
-2. 대안: PG15+ `NULLS NOT DISTINCT`/partial unique 전환 — Auth.js 조회 경로 전체에
-   `deletedAt IS NULL` 필터를 강제해야 하므로 회귀 위험이 크다. 권장하지 않음.
+- PG15+ `NULLS NOT DISTINCT`/partial unique 전환 — Auth.js 조회 경로 전체에
+  `deletedAt IS NULL` 필터를 강제해야 하므로 회귀 위험이 크다. 권장하지 않음.
 
-계정 삭제·데이터 보존 정책 전체는 Phase 8 문서화와 연동한다.
+자유 입력 본문(메시지·리뷰 등) 보존 데이터의 개인정보 정책 전체는 Phase 8
+문서화와 연동한다.

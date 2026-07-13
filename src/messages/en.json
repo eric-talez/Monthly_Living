@@ -68,7 +68,8 @@
       "resetSuccessNotice": "Your password has been reset. Please log in with your new password.",
       "registerPrompt": "Don't have an account yet?",
       "registerLink": "Sign up",
-      "forgotPasswordLink": "Forgot your password?"
+      "forgotPasswordLink": "Forgot your password?",
+      "deletedNotice": "Your account has been deleted. Thank you for using 한달살기."
     },
     "oauth": {
       "divider": "or",
@@ -149,7 +150,8 @@
       "passwordTooLong": "The password is too long. Please use a shorter password.",
       "passwordNeedsLetterAndDigit": "The password must include at least one letter and one digit.",
       "passwordMismatch": "The passwords do not match.",
-      "consentRequired": "Please agree to the required terms."
+      "consentRequired": "Please agree to the required terms.",
+      "deleteConfirmMismatch": "Type DELETE exactly to confirm."
     },
     "emails": {
       "verification": {
@@ -159,6 +161,85 @@
       "passwordReset": {
         "subject": "[한달살기] Password reset instructions",
         "body": "A password reset was requested for your account.\n\nSet a new password using the link below. The link is valid for 30 minutes and can be used only once.\n\n{url}\n\nIf you did not request this, please ignore this email. Your password will not be changed."
+      },
+      "accountDeletion": {
+        "subject": "[한달살기] Confirm account deletion",
+        "body": "Account deletion was requested for your account.\n\nOpen the link below to complete deletion. The link is valid for 30 minutes and can be used only once. Deleted account data cannot be recovered.\n\n{url}\n\nIf you did not request this, please ignore this email. Your account will not be deleted."
+      }
+    }
+  },
+  "settings": {
+    "account": {
+      "title": "Account settings",
+      "description": "View and manage your login account.",
+      "emailLabel": "Email",
+      "dangerZone": {
+        "title": "Danger zone",
+        "description": "Deleting your account permanently removes your profile and login data. This cannot be undone.",
+        "deleteLink": "Delete account"
+      }
+    },
+    "accountDeletion": {
+      "request": {
+        "title": "Delete account",
+        "description": "Proceeding will permanently delete your account data as described below. To continue, request a confirmation link by email.",
+        "emailNotice": "A confirmation email will be sent to {email}.",
+        "deleted": {
+          "title": "Deleted when you leave",
+          "profile": "Personal details stored on your account (profile, contact info)",
+          "social": "Google and Kakao social login connections",
+          "favorites": "Saved programs and experts",
+          "notifications": "Notifications and saved recommendation surveys"
+        },
+        "kept": {
+          "title": "Kept for legal and transactional records",
+          "bookings": "Completed or cancelled bookings with payment and refund records",
+          "reviews": "Reviews, messages, and support history you created",
+          "consents": "Terms and privacy consent history"
+        },
+        "note": "You cannot delete your account while bookings, payments, disputes, or support requests are in progress.",
+        "submit": "Send confirmation email",
+        "blocked": "Your account cannot be deleted right now. Please finish any bookings, payments, disputes, or support requests in progress first.",
+        "unsupported": "Online deletion is not available for this account type. Please contact support.",
+        "backLink": "Back to account settings"
+      },
+      "sent": {
+        "title": "Confirmation email sent",
+        "description": "We sent an account deletion link to your account email. The link is valid for 30 minutes.",
+        "note": "If you cannot find the email, check your spam folder."
+      },
+      "confirm": {
+        "title": "Confirm account deletion",
+        "warning": "This cannot be undone. You will be signed out immediately and your account's personal data will be permanently deleted.",
+        "confirmLabel": "Confirmation phrase",
+        "confirmHint": "Type DELETE in capital letters to continue.",
+        "submit": "Permanently delete account",
+        "missingToken": "A deletion confirmation link is required. Open the link from your email again or request a new one.",
+        "invalid": "This deletion link is not valid or was already used. Please request a new confirmation email.",
+        "expired": "This deletion link has expired (valid for 30 minutes). Please request a new confirmation email.",
+        "blocked": "Your account cannot be deleted right now. Please finish any bookings, payments, disputes, or support requests in progress first.",
+        "requestAgainLink": "Request a new confirmation email",
+        "backLink": "Back to account settings"
+      },
+      "result": {
+        "invalid": {
+          "title": "Invalid deletion link",
+          "description": "The deletion link is not valid or was already used. Request a new confirmation email if needed."
+        },
+        "expired": {
+          "title": "Expired deletion link",
+          "description": "The deletion link has expired. Please request a new confirmation email."
+        },
+        "blocked": {
+          "title": "Account cannot be deleted",
+          "description": "Your account cannot be deleted in its current state. Please check bookings, payments, disputes, or support requests in progress."
+        },
+        "error": {
+          "title": "Temporary error",
+          "description": "Something went wrong while processing the deletion. Please try again later."
+        },
+        "requestAgainLink": "Request a new confirmation email",
+        "backToAccountLink": "Go to account settings"
       }
     }
   }

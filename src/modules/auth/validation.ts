@@ -90,6 +90,7 @@ export const VALIDATION_MESSAGE_KEYS = [
   'passwordNeedsLetterAndDigit',
   'passwordMismatch',
   'consentRequired',
+  'deleteConfirmMismatch',
 ] as const;
 
 export type ValidationMessageKey = (typeof VALIDATION_MESSAGE_KEYS)[number];
