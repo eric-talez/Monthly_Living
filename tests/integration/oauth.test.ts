@@ -1,6 +1,10 @@
+import type { Adapter } from 'next-auth/adapters';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '@/lib/prisma';
+import { createOAuthAdapter } from '@/modules/auth/adapter';
 import { CONSENT_TERMS_VERSION } from '@/modules/auth/constants';
+import type { OAuthIdentityHooks } from '@/modules/auth/oauth-identity';
 
 import { cleanupOwnData, disconnect, runId, testEmail, testPrisma } from './helpers/db';
 import {
@@ -35,8 +39,12 @@ import { createRegisteredUser } from './helpers/users';
 
 const app = createOAuthTestApp();
 
-/** providerAccountId도 runId를 붙여 test DB 재사용 시 충돌을 방지한다 */
+/** providerAccountId도 runId를 붙여 test DB 재사용 시 충돌을 방지한다 (Google sub — 형식 제약 없음) */
 const providerSub = (label: string) => `${runId}-${label}`;
+
+/** Kakao 회원번호는 숫자만 허용되므로 실행마다 고유한 숫자 문자열 id를 만든다 */
+let kakaoIdSequence = 0;
+const nextKakaoTestId = () => `9${Date.now()}${(kakaoIdSequence += 1)}`;
 
 afterAll(async () => {
   await cleanupOwnData();
@@ -171,10 +179,12 @@ describe('Google OAuth: 신규 가입', () => {
 describe('Kakao OAuth: 신규 가입', () => {
   it('숫자 id·nickname 프로필로 가입되고 token 컬럼은 전부 null이다', async () => {
     const email = testEmail('k-new');
+    // 실제 Kakao처럼 number 타입 회원번호로 전달 — 문자열화되어 저장되는지 검증
+    const kakaoNumericId = Date.now();
     const jar = new CookieJar();
 
     const response = await performKakaoLogin(app, jar, {
-      id: 9_900_000_001,
+      id: kakaoNumericId,
       email,
       is_email_valid: true,
       is_email_verified: true,
@@ -192,7 +202,7 @@ describe('Kakao OAuth: 신규 가입', () => {
     expect(record!.accounts).toHaveLength(1);
     const account = record!.accounts[0];
     expect(account.provider).toBe('kakao');
-    expect(account.providerAccountId).toBe('9900000001');
+    expect(account.providerAccountId).toBe(String(kakaoNumericId));
     expect(account.type).toBe('oauth');
     // Kakao 실서버가 보내는 refresh_token_expires_in 포함 — 어떤 token도 저장되지 않는다
     expect(account.access_token).toBeNull();
@@ -207,7 +217,7 @@ describe('Kakao OAuth: 신규 가입', () => {
     const again = new CookieJar();
     expectSuccessRedirect(
       await performKakaoLogin(app, again, {
-        id: 9_900_000_001,
+        id: kakaoNumericId,
         email,
         is_email_valid: true,
         is_email_verified: true,
@@ -242,7 +252,7 @@ describe('locale 전파 (callback-url 쿠키 → preferredLanguage)', () => {
       await performKakaoLogin(
         app,
         jar,
-        { id: providerSub('k-ko'), email, is_email_valid: true, is_email_verified: true },
+        { id: nextKakaoTestId(), email, is_email_valid: true, is_email_verified: true },
         { callbackUrl: '/' },
       ),
     );
@@ -290,7 +300,7 @@ describe('거부 정책: 이메일·식별자', () => {
       const email = testEmail(`k-deny-${label}`);
       const jar = new CookieJar();
       const response = await performKakaoLogin(app, jar, {
-        id: providerSub(`k-deny-${label}`),
+        id: nextKakaoTestId(),
         email,
         ...overrides,
       });
@@ -307,6 +317,26 @@ describe('거부 정책: 이메일·식별자', () => {
       email_verified: true,
     });
     expect(expectErrorRedirect(response)).toBe('AccessDenied');
+  });
+
+  it('Kakao unsafe id(소수·음수·unsafe 정수·빈 문자열)는 거부된다', async () => {
+    for (const [label, id] of [
+      ['decimal', 123.5],
+      ['negative', -42],
+      ['unsafe', Number.MAX_SAFE_INTEGER + 1],
+      ['empty', ''],
+    ] as const) {
+      const email = testEmail(`k-unsafe-${label}`);
+      const jar = new CookieJar();
+      const response = await performKakaoLogin(app, jar, {
+        id,
+        email,
+        is_email_valid: true,
+        is_email_verified: true,
+      });
+      expect(expectErrorRedirect(response)).toBe('AccessDenied');
+      expect(await testPrisma.user.count({ where: { email } })).toBe(0);
+    }
   });
 
   it('프로필 식별자(sub/id)가 없으면 거부된다 — 임의 UUID 계정 생성 차단', async () => {
@@ -334,7 +364,7 @@ describe('거부 정책: 이메일·식별자', () => {
 });
 
 describe('기존 Credentials 계정과 동일 이메일', () => {
-  it('자동 연결하지 않고 OAuthAccountNotLinked로 중단한다 (중복 User·Account 없음, credentials 로그인 회귀 없음)', async () => {
+  it('자동 연결하지 않고 거부한다 (중복 User·Account 없음, credentials 로그인 회귀 없음)', async () => {
     const { email, password } = await createRegisteredUser('oauth-conflict');
 
     const jar = new CookieJar();
@@ -343,7 +373,8 @@ describe('기존 Credentials 계정과 동일 이메일', () => {
       email,
       email_verified: true,
     });
-    expect(expectErrorRedirect(response)).toBe('OAuthAccountNotLinked');
+    // ensureOAuthIdentity가 동일 이메일 존재(상태 무관)를 거부 → AccessDenied
+    expect(expectErrorRedirect(response)).toBe('AccessDenied');
     expect(jar.has(SESSION_COOKIE)).toBe(false);
 
     expect(await testPrisma.user.count({ where: { email } })).toBe(1);
@@ -394,7 +425,7 @@ describe('SUSPENDED/DELETED 계정 차단', () => {
 
   it('DELETED(deletedAt 설정) OAuth 사용자도 재로그인이 거부된다', async () => {
     const email = testEmail('k-deleted-repeat');
-    const id = providerSub('k-deleted-repeat');
+    const id = nextKakaoTestId();
     expectSuccessRedirect(
       await performKakaoLogin(app, new CookieJar(), {
         id,
@@ -420,30 +451,36 @@ describe('SUSPENDED/DELETED 계정 차단', () => {
   });
 });
 
-describe('linkAccount 엄격 가드 — 로그인된 세션 편승 연결 차단', () => {
-  it('credentials 세션이 있는 상태의 OAuth 완료도 기존 계정에 연결되지 않는다', async () => {
+describe('세션 편승 연결 차단 — 세션 쿠키 존재 시 미등록 identity 거부', () => {
+  it('credentials 세션이 있는 상태의 OAuth 완료는 신규 identity를 만들지 않는다', async () => {
     const { email, password } = await createRegisteredUser('session-ride');
     const jar = new CookieJar();
     await signInWithCredentials(jar, email, password, app.auth);
     expect(jar.has(SESSION_COOKIE)).toBe(true);
 
     // 같은 브라우저(jar)에서 다른 이메일의 Google 계정으로 OAuth 완료 — Auth.js 기본은
-    // 세션 사용자에게 연결하지만(@auth/core handle-login.js:209) adapter 가드가 차단한다
+    // 세션 사용자에게 연결하지만(@auth/core handle-login.js:209) ensureOAuthIdentity가
+    // 세션 쿠키 존재를 이유로 미등록 identity 생성 자체를 거부한다 (fail-closed).
     const response = await performGoogleLogin(app, jar, {
       sub: providerSub('g-session-ride'),
       email: testEmail('g-session-ride-other'),
       email_verified: true,
     });
-    expectErrorRedirect(response);
+    expect(expectErrorRedirect(response)).toBe('AccessDenied');
 
     const record = await loadUserWithRelations(email);
     expect(record!.accounts).toHaveLength(0); // 연결되지 않음
     expect(
       await testPrisma.user.count({ where: { email: testEmail('g-session-ride-other') } }),
+    ).toBe(0); // 신규 데이터 0
+    expect(
+      await testPrisma.account.count({
+        where: { provider: 'google', providerAccountId: providerSub('g-session-ride') },
+      }),
     ).toBe(0);
   });
 
-  it('OAuth 사용자 세션에서 다른 provider 완료도 추가 연결되지 않는다 (Account 0개 불변식)', async () => {
+  it('OAuth 사용자 세션에서 다른 provider 완료도 신규 identity를 만들지 않는다', async () => {
     const email = testEmail('g-then-kakao');
     const jar = new CookieJar();
     expectSuccessRedirect(
@@ -454,92 +491,185 @@ describe('linkAccount 엄격 가드 — 로그인된 세션 편승 연결 차단
       }),
     );
 
+    const kakaoSecondId = nextKakaoTestId();
     const response = await performKakaoLogin(app, jar, {
-      id: providerSub('k-second-link'),
+      id: kakaoSecondId,
       email: testEmail('k-second-link'),
       is_email_valid: true,
       is_email_verified: true,
     });
-    expectErrorRedirect(response);
+    expect(expectErrorRedirect(response)).toBe('AccessDenied');
 
     const record = await loadUserWithRelations(email);
     expect(record!.accounts).toHaveLength(1); // google 하나만 유지
     expect(record!.accounts[0].provider).toBe('google');
+    expect(await testPrisma.user.count({ where: { email: testEmail('k-second-link') } })).toBe(0);
     expect(
       await testPrisma.account.count({
-        where: { provider: 'kakao', providerAccountId: providerSub('k-second-link') },
+        where: { provider: 'kakao', providerAccountId: kakaoSecondId },
       }),
     ).toBe(0);
   });
-});
 
-describe('실패 주입 — provisional user 보상 정리', () => {
-  it('Account 연결 강제 실패 시 이번 시도의 User/ConsentRecord가 남지 않고, 기존 사용자는 보존된다', async () => {
-    const bystander = await createRegisteredUser('cleanup-bystander');
+  it('stale·chunk 세션 쿠키도 신규 가입을 막는다 (문서화된 fail-safe 한계) — 기존 identity 로그인은 허용', async () => {
+    // 만료·손상된 쿠키라도 존재 자체로 신규 identity 생성이 거부된다
+    for (const [label, cookieName] of [
+      ['기본 이름 garbage', 'authjs.session-token'],
+      ['chunk suffix', 'authjs.session-token.0'],
+    ] as const) {
+      const email = testEmail(`g-stale-${label === '기본 이름 garbage' ? 'base' : 'chunk'}`);
+      const jar = new CookieJar();
+      jar.set(cookieName, 'stale-garbage-value');
+      const response = await performGoogleLogin(app, jar, {
+        sub: providerSub(`g-stale-${cookieName}`),
+        email,
+        email_verified: true,
+      });
+      expect(expectErrorRedirect(response)).toBe('AccessDenied');
+      expect(await testPrisma.user.count({ where: { email } })).toBe(0);
+    }
 
-    let failNext = false;
-    const failingApp = createOAuthTestApp({
-      beforeLinkAccountCommit: () => {
-        if (failNext) {
-          failNext = false;
-          throw new Error('injected-link-failure');
-        }
-      },
-    });
-
-    const email = testEmail('g-cleanup');
-    const sub = providerSub('g-cleanup');
-
-    failNext = true;
-    const jar = new CookieJar();
-    const response = await performGoogleLogin(failingApp, jar, {
-      sub,
-      email,
-      email_verified: true,
-    });
-    expectErrorRedirect(response);
-    expect(jar.has(SESSION_COOKIE)).toBe(false);
-
-    // 고아 데이터 0건 — User가 cascade로 지워지므로 ConsentRecord도 남지 않는다
-    expect(await testPrisma.user.count({ where: { email } })).toBe(0);
-    expect(
-      await testPrisma.account.count({ where: { provider: 'google', providerAccountId: sub } }),
-    ).toBe(0);
-
-    // 기존 사용자는 삭제되지 않았다
-    expect(await testPrisma.user.count({ where: { email: bystander.email } })).toBe(1);
-
-    // 주입 없이 재시도하면 잔여물 없이 정상 가입된다 (Account+emailVerified 부분 상태 불가 증명)
-    const retryJar = new CookieJar();
+    // 반면 이미 등록된 identity의 재로그인은 세션 쿠키가 있어도 허용된다
+    const email = testEmail('g-stale-relogin');
+    const sub = providerSub('g-stale-relogin');
     expectSuccessRedirect(
-      await performGoogleLogin(failingApp, retryJar, { sub, email, email_verified: true }),
+      await performGoogleLogin(app, new CookieJar(), { sub, email, email_verified: true }),
     );
-    const record = await loadUserWithRelations(email);
-    expect(record!.accounts).toHaveLength(1);
-    expect(record!.consents).toHaveLength(3);
-    expect(record!.emailVerified).not.toBeNull();
+    const staleJar = new CookieJar();
+    staleJar.set('authjs.session-token', 'stale-garbage-value');
+    expectSuccessRedirect(
+      await performGoogleLogin(app, staleJar, { sub, email, email_verified: true }),
+    );
   });
 });
 
-describe('동시성 race', () => {
-  it('동일 providerAccountId 동시 callback — 한쪽만 성공하고 패자 provisional user는 정리된다', async () => {
-    // 두 flow가 반드시 linkAccount transaction 안에서 만나도록 hook을 barrier로
-    // 사용한다 — 인터리빙 운에 기대지 않는 결정적 race: 둘 다 신규 user를 만든 뒤
-    // 같은 (provider, providerAccountId)를 INSERT해 정확히 한쪽이 P2002로 진다.
-    let releaseFirst: (() => void) | null = null;
+describe('원자적 identity 생성 — transaction 실패 시 부분 상태 없음', () => {
+  it.each([
+    ['User 생성 후', 'afterUserCreate'],
+    ['ConsentRecord 생성 후', 'afterConsentCreate'],
+    ['Account 생성 후 commit 직전', 'afterAccountCreate'],
+  ] as const)(
+    '%s 강제 실패 → User/ConsentRecord/Account 전부 0, 기존 사용자 무손상, 재시도 정상',
+    async (_label, hookName) => {
+      const bystander = await createRegisteredUser(`atomic-bystander-${hookName}`);
+
+      let failNext = true;
+      const hooks: OAuthIdentityHooks = {};
+      hooks[hookName] = () => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('injected-tx-failure');
+        }
+      };
+      const failingApp = createOAuthTestApp({ identityHooks: hooks });
+
+      const email = testEmail(`g-atomic-${hookName}`);
+      const sub = providerSub(`g-atomic-${hookName}`);
+
+      const jar = new CookieJar();
+      const response = await performGoogleLogin(failingApp, jar, {
+        sub,
+        email,
+        email_verified: true,
+      });
+      expectErrorRedirect(response);
+      expect(jar.has(SESSION_COOKIE)).toBe(false);
+
+      // 전체 rollback — 어느 지점에서 실패해도 부분 상태가 없다.
+      // ConsentRecord는 같은 transaction + FK(userId)라 user 0이면 존재할 수 없다.
+      expect(await testPrisma.user.count({ where: { email } })).toBe(0);
+      expect(
+        await testPrisma.account.count({ where: { provider: 'google', providerAccountId: sub } }),
+      ).toBe(0);
+
+      // 기존 사용자는 어떤 영향도 받지 않는다 (hard delete 경로 자체가 없다)
+      expect(await testPrisma.user.count({ where: { email: bystander.email } })).toBe(1);
+
+      // 주입 없이 재시도하면 잔여물 없이 정상 가입된다
+      const retryJar = new CookieJar();
+      expectSuccessRedirect(
+        await performGoogleLogin(failingApp, retryJar, { sub, email, email_verified: true }),
+      );
+      const record = await loadUserWithRelations(email);
+      expect(record!.accounts).toHaveLength(1);
+      expect(record!.consents).toHaveLength(3);
+      expect(record!.emailVerified).not.toBeNull();
+    },
+  );
+
+  it('transaction commit 후 core 후속 처리 실패 → 완전한 identity 1세트 유지, 재시도 로그인 성공', async () => {
+    // handleLoginOrRegister의 Account 재조회(요청당 2번째 getUserByAccount)를 1회
+    // 실패시켜 "identity는 커밋됐지만 세션 발급 전에 죽은" 시나리오를 재현한다 —
+    // crash여도 고아가 아니라 완전한 identity가 남고, 재시도는 기존 로그인이 된다.
+    const base = createOAuthAdapter(prisma);
+    let lookupCalls = 0;
+    const failingAdapter: Adapter = {
+      ...base,
+      getUserByAccount: async (key) => {
+        lookupCalls += 1;
+        if (lookupCalls === 2) {
+          throw new Error('injected-post-commit-failure');
+        }
+        return base.getUserByAccount!(key);
+      },
+    };
+    const app2 = createOAuthTestApp({ adapter: failingAdapter });
+
+    const email = testEmail('g-post-commit');
+    const sub = providerSub('g-post-commit');
+
+    const jar = new CookieJar();
+    const response = await performGoogleLogin(app2, jar, { sub, email, email_verified: true });
+    expectErrorRedirect(response);
+    expect(jar.has(SESSION_COOKIE)).toBe(false);
+
+    // identity는 온전한 1세트로 유지된다 (부분 상태 아님 — 전부 있거나 전부 없거나)
+    const record = await loadUserWithRelations(email);
+    expect(record).not.toBeNull();
+    expect(record!.accounts).toHaveLength(1);
+    expect(record!.consents).toHaveLength(3);
+    expect(record!.emailVerified).not.toBeNull();
+
+    // 재시도 — 기존 identity 로그인으로 성공하고 중복 생성이 없다
+    const retryJar = new CookieJar();
+    expectSuccessRedirect(
+      await performGoogleLogin(app2, retryJar, { sub, email, email_verified: true }),
+    );
+    const { body } = await fetchSession(retryJar, app2.auth);
+    expect(sessionUser(body)?.id).toBe(record!.id);
+    const after = await loadUserWithRelations(email);
+    expect(after!.accounts).toHaveLength(1);
+    expect(after!.consents).toHaveLength(3);
+  });
+});
+
+describe('동시성 race (barrier로 결정적 재현)', () => {
+  function createBarrier() {
+    let release: (() => void) | null = null;
     let arrivals = 0;
-    const barrierApp = createOAuthTestApp({
-      beforeLinkAccountCommit: async () => {
+    return {
+      arrivals: () => arrivals,
+      hook: async () => {
         arrivals += 1;
         if (arrivals === 1) {
           await new Promise<void>((resolve) => {
-            releaseFirst = resolve;
+            release = resolve;
             setTimeout(resolve, 2000); // 안전 타임아웃 — Prisma tx timeout(5s)보다 짧게
           });
         } else {
-          releaseFirst?.();
+          release?.();
         }
       },
+    };
+  }
+
+  it('동일 providerAccountId 동시 callback — identity 1세트, 양쪽 모두 같은 사용자로 수렴', async () => {
+    // 두 transaction이 Account 생성 직전에 만나도록 barrier — 패자는 P2002로
+    // 전체 rollback된 뒤 재조회에서 승자의 Account를 발견해 기존 identity
+    // 로그인으로 수렴한다 (User hard delete 없음 — rollback이 전부 지웠다).
+    const barrier = createBarrier();
+    const barrierApp = createOAuthTestApp({
+      identityHooks: { afterConsentCreate: barrier.hook },
     });
 
     const sub = providerSub('g-race-account');
@@ -569,12 +699,12 @@ describe('동시성 race', () => {
       completeOAuthCallback(barrierApp, jarB, 'google', codeB, authzB),
     ]);
 
-    expect(arrivals).toBe(2); // 둘 다 linkAccount까지 도달했다 (진짜 race였음을 보증)
-    const locations = [responseA, responseB].map((r) => r.headers.get('location') ?? '');
-    const successCount = locations.filter((l) => !l.includes('error=')).length;
-    expect(successCount).toBe(1); // 정확히 한쪽만 성공
+    expect(barrier.arrivals()).toBe(2); // 둘 다 transaction 안까지 도달 — 진짜 race
+    for (const response of [responseA, responseB]) {
+      expectSuccessRedirect(response); // 패자도 승자 identity로 로그인된다
+    }
 
-    // Account는 정확히 1행, 어느 쪽이 이겼든 승자 user만 남는다 (패자 orphan 0)
+    // identity는 정확히 1세트 — 어느 email이 이겼든 승자만 남고 고아는 없다
     expect(
       await testPrisma.account.count({ where: { provider: 'google', providerAccountId: sub } }),
     ).toBe(1);
@@ -586,26 +716,42 @@ describe('동시성 race', () => {
     expect(survivors[0].accounts).toHaveLength(1);
     expect(survivors[0].consents).toHaveLength(3);
     expect(survivors[0].emailVerified).not.toBeNull();
+
+    // 두 세션 모두 같은 사용자다
+    const sessionA = await fetchSession(jarA, barrierApp.auth);
+    const sessionB = await fetchSession(jarB, barrierApp.auth);
+    expect(sessionUser(sessionA.body)?.id).toBe(survivors[0].id);
+    expect(sessionUser(sessionB.body)?.id).toBe(survivors[0].id);
   });
 
-  it('동일 이메일 동시 Google/Kakao 신규 가입 — User 1·Account 1·동의 3건으로 수렴한다', async () => {
+  it('동일 이메일 동시 Google/Kakao — 승자 1세트, 패자는 일반화 오류, 고아 0', async () => {
+    // barrier를 user 생성 직전에 둬 두 flow가 이메일 조회를 모두 통과한 뒤
+    // 경합하게 만든다 — 패자는 email unique P2002 rollback 후 재조회에서
+    // 승자 user(자기 provider Account 없음)를 발견해 일반화 오류로 수렴한다.
+    const barrier = createBarrier();
+    const barrierApp = createOAuthTestApp({
+      identityHooks: { beforeUserCreate: barrier.hook },
+    });
+
     const email = testEmail('race-same-email');
+    const googleSub = providerSub('race-google');
+    const kakaoId = nextKakaoTestId();
 
     const googleJar = new CookieJar();
     const kakaoJar = new CookieJar();
-    const googleAuthz = await startOAuthSignIn(app, googleJar, 'google');
-    const kakaoAuthz = await startOAuthSignIn(app, kakaoJar, 'kakao');
+    const googleAuthz = await startOAuthSignIn(barrierApp, googleJar, 'google');
+    const kakaoAuthz = await startOAuthSignIn(barrierApp, kakaoJar, 'kakao');
 
     const googleCode = nextAuthorizationCode('race-google');
     const kakaoCode = nextAuthorizationCode('race-kakao');
-    app.network.registerGoogleFlow(googleCode, {
-      claims: { sub: providerSub('race-google'), email, email_verified: true },
+    barrierApp.network.registerGoogleFlow(googleCode, {
+      claims: { sub: googleSub, email, email_verified: true },
       expectedCodeChallenge: googleAuthz.searchParams.get('code_challenge'),
       nonce: googleAuthz.searchParams.get('nonce'),
     });
-    app.network.registerKakaoFlow(kakaoCode, {
+    barrierApp.network.registerKakaoFlow(kakaoCode, {
       profile: {
-        id: providerSub('race-kakao'),
+        id: kakaoId,
         kakao_account: {
           email,
           is_email_valid: true,
@@ -617,20 +763,23 @@ describe('동시성 race', () => {
     });
 
     const [googleResponse, kakaoResponse] = await Promise.all([
-      completeOAuthCallback(app, googleJar, 'google', googleCode, googleAuthz),
-      completeOAuthCallback(app, kakaoJar, 'kakao', kakaoCode, kakaoAuthz),
+      completeOAuthCallback(barrierApp, googleJar, 'google', googleCode, googleAuthz),
+      completeOAuthCallback(barrierApp, kakaoJar, 'kakao', kakaoCode, kakaoAuthz),
     ]);
 
+    expect(barrier.arrivals()).toBe(2);
     const locations = [googleResponse, kakaoResponse].map((r) => r.headers.get('location') ?? '');
     const successCount = locations.filter((l) => !l.includes('error=')).length;
-    expect(successCount).toBe(1);
+    expect(successCount).toBe(1); // 승자 하나, 패자는 일반화 오류
+    const errorLocation = locations.find((l) => l.includes('error='));
+    expect(errorLocation).toContain('error=AccessDenied');
 
     const users = await testPrisma.user.findMany({
       where: { email },
       include: { accounts: true, consents: true },
     });
     expect(users).toHaveLength(1);
-    expect(users[0].accounts).toHaveLength(1);
+    expect(users[0].accounts).toHaveLength(1); // 승자 provider의 Account만
     expect(users[0].consents).toHaveLength(3);
   });
 });
@@ -651,7 +800,7 @@ describe('token/secret 비노출', () => {
       );
       expectSuccessRedirect(
         await performKakaoLogin(app, new CookieJar(), {
-          id: providerSub('k-log-scan'),
+          id: nextKakaoTestId(),
           email: testEmail('k-log-scan'),
           is_email_valid: true,
           is_email_verified: true,

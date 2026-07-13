@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
-import type { AuthServiceDeps } from './deps';
 import { emailSchema } from './validation';
 
 /**
- * OAuth 로그인 정책 (순수 모듈 — env·DB 싱글턴 import 금지, deps는 호출자가 주입).
- * Auth.js signIn callback(src/auth.ts)이 이 모듈의 evaluateOAuthSignIn만 호출한다 —
- * Credentials의 authorizeLogin과 같은 "단일 정책 지점" 구조.
+ * OAuth 프로필 검증·매핑 (순수 모듈 — env·DB import 금지).
+ * DB를 사용하는 identity 판정·생성은 modules/auth/oauth-identity.ts가 담당하고,
+ * 이 모듈은 provider가 보낸 원본 프로필의 형태 검증만 책임진다.
  *
  * provider가 검증한 이메일만 신뢰한다:
  * - Google(OIDC id_token claims): `email_verified`가 boolean true일 때만
@@ -27,6 +26,24 @@ function normalizeEmailInput(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/**
+ * Kakao 회원번호 정규화 — 숫자면 안전 정수(비음수)만, 문자열이면 trim 후
+ * 숫자만 1~20자리만 인정한다. NaN/Infinity/소수/음수/2^53 초과(JSON 파싱
+ * 정밀도 손실 위험)·빈 문자열·비숫자 형식은 전부 undefined(거부)로 수렴한다.
+ */
+export const KAKAO_ID_STRING_PATTERN = /^[0-9]{1,20}$/;
+
+export function normalizeKakaoId(value: unknown): string | undefined {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value.toString() : undefined;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return KAKAO_ID_STRING_PATTERN.test(trimmed) ? trimmed : undefined;
+  }
+  return undefined;
+}
+
 // ── 원본 프로필 스키마 (boolean true 엄격 — truthy 문자열/숫자 불인정) ──────────
 
 const googleRawProfileSchema = z.looseObject({
@@ -36,7 +53,7 @@ const googleRawProfileSchema = z.looseObject({
 });
 
 const kakaoRawProfileSchema = z.looseObject({
-  id: z.union([z.string().min(1), z.number()]),
+  id: z.unknown().refine((value) => normalizeKakaoId(value) !== undefined),
   kakao_account: z.looseObject({
     email: z.string().min(1),
     is_email_valid: z.literal(true),
@@ -70,7 +87,7 @@ export function mapGoogleProfile(profile: Record<string, unknown>): MappedOAuthP
   };
 }
 
-/** Kakao userinfo JSON → User 필드. id 누락 시 undefined 유지. */
+/** Kakao userinfo JSON → User 필드. id는 normalizeKakaoId 통과 값만(아니면 undefined 유지). */
 export function mapKakaoProfile(profile: Record<string, unknown>): MappedOAuthProfile {
   const account =
     typeof profile.kakao_account === 'object' && profile.kakao_account !== null
@@ -81,39 +98,38 @@ export function mapKakaoProfile(profile: Record<string, unknown>): MappedOAuthPr
       ? (account.profile as Record<string, unknown>)
       : undefined;
 
-  const rawId = profile.id;
-  const id =
-    typeof rawId === 'string' && rawId.length > 0
-      ? rawId
-      : typeof rawId === 'number' && Number.isFinite(rawId)
-        ? rawId.toString()
-        : undefined;
   const email = asOptionalString(account?.email);
 
   return {
-    id,
+    id: normalizeKakaoId(profile.id),
     name: asOptionalString(kakaoProfile?.nickname),
     email: email === undefined ? undefined : normalizeEmailInput(email),
     image: asOptionalString(kakaoProfile?.profile_image_url),
   };
 }
 
-// ── signIn 정책 ────────────────────────────────────────────────────
+// ── 프로필 검증 (signIn callback의 1단계 — DB 접근 없음) ─────────────────
 
-export type OAuthSignInDenyReason =
+export type OAuthProfileRejectReason =
   | 'unsupported-provider'
   | 'provider-account-id-invalid'
-  | 'profile-rejected' // id/email 누락, 미검증 이메일, boolean 아님 등 — 스키마 불일치 전부
+  | 'profile-rejected' // id/email 누락, 미검증 이메일, boolean 아님, unsafe id 등 — 스키마 불일치 전부
   | 'provider-account-id-mismatch'
-  | 'email-invalid'
-  | 'account-owner-not-active'
-  | 'existing-user-not-active';
+  | 'email-invalid';
 
-export type OAuthSignInDecision =
-  | { allowed: true; kind: 'existing-account' | 'no-account' }
-  | { allowed: false; reason: OAuthSignInDenyReason };
+export type OAuthProfileValidation =
+  | {
+      ok: true;
+      providerId: OAuthProviderId;
+      providerAccountId: string;
+      /** emailSchema 정규화(trim/lowercase/형식/254자) 통과 값 */
+      email: string;
+      name?: string;
+      image?: string;
+    }
+  | { ok: false; reason: OAuthProfileRejectReason };
 
-export interface OAuthSignInInput {
+export interface OAuthProfileInput {
   providerId: string;
   /** 원본 OAuth 프로필 (Google: id_token claims / Kakao: userinfo JSON) */
   profile: unknown;
@@ -122,82 +138,64 @@ export interface OAuthSignInInput {
 }
 
 /**
- * OAuth 로그인 허용 판정. 거부 사유는 호출자(signIn callback)가 false로만
- * 변환한다 — 사유는 감사·테스트용이며 사용자에게 구분 노출하지 않는다.
+ * 원본 프로필 검증 — 실패 사유는 감사·테스트용이며 사용자에게 구분 노출하지 않는다.
  *
  * 판정 순서:
- * 1) 프로필 검증(식별자 존재, provider 검증 이메일, boolean 엄격)
+ * 1) 프로필 스키마(식별자 존재·형식, provider 검증 이메일, boolean 엄격)
  * 2) providerAccountId가 원본 프로필 식별자와 정확히 일치하는지
  *    (@auth/core는 profile().id 누락 시 임의 UUID를 쓰므로 여기서 차단)
- * 3) 이메일 정규화(emailSchema — trim/lowercase/형식/길이)
- * 4) Account 존재(재로그인): 소유 user가 ACTIVE·미삭제일 때만 허용.
- *    소유자 재지정·이메일 갱신은 어떤 경우에도 하지 않는다.
- * 5) Account 없음: 동일 이메일 user가 비활성이면 거부. 활성이면 허용하되
- *    자동 연결은 하지 않는다(@auth/core가 OAuthAccountNotLinked로 중단 —
- *    fail-safe). 미존재면 신규 가입 허용.
+ * 3) 이메일 정규화(emailSchema)
  */
-export async function evaluateOAuthSignIn(
-  input: OAuthSignInInput,
-  deps: Pick<AuthServiceDeps, 'db'>,
-): Promise<OAuthSignInDecision> {
+export function validateOAuthProfile(input: OAuthProfileInput): OAuthProfileValidation {
   if (!isOAuthProviderId(input.providerId)) {
-    return { allowed: false, reason: 'unsupported-provider' };
+    return { ok: false, reason: 'unsupported-provider' };
   }
   if (typeof input.providerAccountId !== 'string' || input.providerAccountId.length === 0) {
-    return { allowed: false, reason: 'provider-account-id-invalid' };
+    return { ok: false, reason: 'provider-account-id-invalid' };
   }
 
   let profileId: string;
   let profileEmail: string;
+  let name: string | undefined;
+  let image: string | undefined;
   if (input.providerId === 'google') {
     const parsed = googleRawProfileSchema.safeParse(input.profile);
     if (!parsed.success) {
-      return { allowed: false, reason: 'profile-rejected' };
+      return { ok: false, reason: 'profile-rejected' };
     }
     profileId = parsed.data.sub;
     profileEmail = parsed.data.email;
+    const mapped = mapGoogleProfile(parsed.data);
+    name = mapped.name;
+    image = mapped.image;
   } else {
     const parsed = kakaoRawProfileSchema.safeParse(input.profile);
     if (!parsed.success) {
-      return { allowed: false, reason: 'profile-rejected' };
+      return { ok: false, reason: 'profile-rejected' };
     }
-    profileId = String(parsed.data.id);
+    // refine 통과가 보장하므로 non-null — 정규화 값으로 비교한다
+    profileId = normalizeKakaoId(parsed.data.id)!;
     profileEmail = parsed.data.kakao_account.email;
+    const mapped = mapKakaoProfile(parsed.data);
+    name = mapped.name;
+    image = mapped.image;
   }
 
   if (profileId !== input.providerAccountId) {
-    return { allowed: false, reason: 'provider-account-id-mismatch' };
+    return { ok: false, reason: 'provider-account-id-mismatch' };
   }
 
   const parsedEmail = emailSchema.safeParse(profileEmail);
   if (!parsedEmail.success) {
-    return { allowed: false, reason: 'email-invalid' };
-  }
-  const email = parsedEmail.data;
-
-  const account = await deps.db.account.findUnique({
-    where: {
-      provider_providerAccountId: {
-        provider: input.providerId,
-        providerAccountId: input.providerAccountId,
-      },
-    },
-    select: { user: { select: { status: true, deletedAt: true } } },
-  });
-  if (account) {
-    if (account.user.status !== 'ACTIVE' || account.user.deletedAt !== null) {
-      return { allowed: false, reason: 'account-owner-not-active' };
-    }
-    return { allowed: true, kind: 'existing-account' };
+    return { ok: false, reason: 'email-invalid' };
   }
 
-  const userByEmail = await deps.db.user.findUnique({
-    where: { email },
-    select: { status: true, deletedAt: true },
-  });
-  if (userByEmail && (userByEmail.status !== 'ACTIVE' || userByEmail.deletedAt !== null)) {
-    return { allowed: false, reason: 'existing-user-not-active' };
-  }
-
-  return { allowed: true, kind: 'no-account' };
+  return {
+    ok: true,
+    providerId: input.providerId,
+    providerAccountId: input.providerAccountId,
+    email: parsedEmail.data,
+    name,
+    image,
+  };
 }

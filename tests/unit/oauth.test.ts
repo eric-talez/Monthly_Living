@@ -1,44 +1,35 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type { AuthServiceDeps } from '@/modules/auth/deps';
 import {
-  evaluateOAuthSignIn,
   isOAuthProviderId,
   mapGoogleProfile,
   mapKakaoProfile,
+  normalizeKakaoId,
+  validateOAuthProfile,
 } from '@/modules/auth/oauth';
 
 /**
- * OAuth 정책 결정 매트릭스 — 순수 모듈이므로 fake db만 주입해 검증한다.
- * 실제 handler·DB 경유 검증은 tests/integration/oauth.test.ts.
+ * OAuth 프로필 검증 매트릭스 — 순수 모듈(DB·env 불필요).
+ * DB를 사용하는 identity 판정(ensureOAuthIdentity)·실제 handler 왕복은
+ * tests/integration/oauth.test.ts가 검증한다.
  */
-
-interface FakeRows {
-  account?: { user: { status: string; deletedAt: Date | null } } | null;
-  user?: { status: string; deletedAt: Date | null } | null;
-}
-
-function fakeDeps(rows: FakeRows = {}) {
-  const accountFindUnique = vi.fn(async () => rows.account ?? null);
-  const userFindUnique = vi.fn(async () => rows.user ?? null);
-  const deps = {
-    db: {
-      account: { findUnique: accountFindUnique },
-      user: { findUnique: userFindUnique },
-    } as unknown as AuthServiceDeps['db'],
-  } satisfies Pick<AuthServiceDeps, 'db'>;
-  return { deps, accountFindUnique, userFindUnique };
-}
 
 const GOOGLE_OK = {
   sub: 'google-sub-1',
   email: 'User@Example.com',
   email_verified: true as const,
+  name: 'G User',
+  picture: 'https://example.com/p.png',
 };
 
 const KAKAO_OK = {
   id: 12345,
-  kakao_account: { email: 'kakao@example.com', is_email_valid: true, is_email_verified: true },
+  kakao_account: {
+    email: 'Kakao@Example.com',
+    is_email_valid: true,
+    is_email_verified: true,
+    profile: { nickname: '닉네임' },
+  },
 };
 
 function googleInput(profile: unknown, providerAccountId: unknown = 'google-sub-1') {
@@ -49,23 +40,32 @@ function kakaoInput(profile: unknown, providerAccountId: unknown = '12345') {
   return { providerId: 'kakao', profile, providerAccountId };
 }
 
-describe('evaluateOAuthSignIn — 프로필·식별자 검증', () => {
-  it('Google: 검증된 이메일 + sub 일치는 신규 가입 허용', async () => {
-    const { deps, userFindUnique } = fakeDeps();
-    const decision = await evaluateOAuthSignIn(googleInput(GOOGLE_OK), deps);
-    expect(decision).toEqual({ allowed: true, kind: 'no-account' });
-    // 이메일은 정규화된 값으로 조회한다
-    expect(userFindUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { email: 'user@example.com' } }),
-    );
+describe('validateOAuthProfile — 허용 경로', () => {
+  it('Google: 검증된 이메일 + sub 일치 → 정규화된 identity 반환', () => {
+    const result = validateOAuthProfile(googleInput(GOOGLE_OK));
+    expect(result).toEqual({
+      ok: true,
+      providerId: 'google',
+      providerAccountId: 'google-sub-1',
+      email: 'user@example.com', // 정규화(lowercase)
+      name: 'G User',
+      image: 'https://example.com/p.png',
+    });
   });
 
-  it('Kakao: 숫자 id는 문자열화되어 providerAccountId와 비교된다', async () => {
-    const { deps } = fakeDeps();
-    const decision = await evaluateOAuthSignIn(kakaoInput(KAKAO_OK), deps);
-    expect(decision).toEqual({ allowed: true, kind: 'no-account' });
+  it('Kakao: 숫자 id는 문자열화되어 providerAccountId와 비교된다', () => {
+    const result = validateOAuthProfile(kakaoInput(KAKAO_OK));
+    expect(result).toMatchObject({
+      ok: true,
+      providerId: 'kakao',
+      providerAccountId: '12345',
+      email: 'kakao@example.com',
+      name: '닉네임',
+    });
   });
+});
 
+describe('validateOAuthProfile — 거부 매트릭스', () => {
   it.each([
     ['sub 누락', { ...GOOGLE_OK, sub: undefined }],
     ['email 누락', { ...GOOGLE_OK, email: undefined }],
@@ -73,11 +73,11 @@ describe('evaluateOAuthSignIn — 프로필·식별자 검증', () => {
     ['email_verified 문자열 "true"', { ...GOOGLE_OK, email_verified: 'true' }],
     ['email_verified 숫자 1', { ...GOOGLE_OK, email_verified: 1 }],
     ['프로필이 객체가 아님', 'not-an-object'],
-  ])('Google 거부: %s', async (_label, profile) => {
-    const { deps, accountFindUnique } = fakeDeps();
-    const decision = await evaluateOAuthSignIn(googleInput(profile), deps);
-    expect(decision).toEqual({ allowed: false, reason: 'profile-rejected' });
-    expect(accountFindUnique).not.toHaveBeenCalled(); // DB 도달 전에 거부
+  ])('Google 거부: %s', (_label, profile) => {
+    expect(validateOAuthProfile(googleInput(profile))).toEqual({
+      ok: false,
+      reason: 'profile-rejected',
+    });
   });
 
   it.each([
@@ -96,107 +96,103 @@ describe('evaluateOAuthSignIn — 프로필·식별자 검증', () => {
       'is_email_verified 숫자 1',
       { id: 12345, kakao_account: { ...KAKAO_OK.kakao_account, is_email_verified: 1 } },
     ],
-  ])('Kakao 거부: %s', async (_label, profile) => {
-    const { deps } = fakeDeps();
-    const decision = await evaluateOAuthSignIn(kakaoInput(profile), deps);
-    expect(decision).toEqual({ allowed: false, reason: 'profile-rejected' });
+  ])('Kakao 거부: %s', (_label, profile) => {
+    expect(validateOAuthProfile(kakaoInput(profile))).toEqual({
+      ok: false,
+      reason: 'profile-rejected',
+    });
   });
 
-  it('providerAccountId가 프로필 식별자와 다르면 거부한다 (google/kakao)', async () => {
-    const { deps } = fakeDeps();
-    expect(await evaluateOAuthSignIn(googleInput(GOOGLE_OK, 'other-sub'), deps)).toEqual({
-      allowed: false,
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['소수', 123.5],
+    ['음수', -1],
+    ['MAX_SAFE_INTEGER 초과', Number.MAX_SAFE_INTEGER + 1],
+    ['빈 문자열', ''],
+    ['공백만', '   '],
+    ['비숫자 문자열', '12a45'],
+    ['21자리 초과', '1'.repeat(21)],
+    ['불리언', true],
+  ])('Kakao unsafe id 거부: %s', (_label, id) => {
+    // providerAccountId는 유효한 형태로 고정 — 프로필 id 자체의 거부를 검증한다
+    const profile = { ...KAKAO_OK, id };
+    expect(validateOAuthProfile(kakaoInput(profile, '12345'))).toEqual({
+      ok: false,
+      reason: 'profile-rejected',
+    });
+  });
+
+  it('providerAccountId가 프로필 식별자와 다르면 거부한다 (google/kakao)', () => {
+    expect(validateOAuthProfile(googleInput(GOOGLE_OK, 'other-sub'))).toEqual({
+      ok: false,
       reason: 'provider-account-id-mismatch',
     });
-    expect(await evaluateOAuthSignIn(kakaoInput(KAKAO_OK, '99999'), deps)).toEqual({
-      allowed: false,
+    expect(validateOAuthProfile(kakaoInput(KAKAO_OK, '99999'))).toEqual({
+      ok: false,
       reason: 'provider-account-id-mismatch',
     });
   });
 
-  it('providerAccountId가 문자열이 아니거나 비어 있으면 거부한다', async () => {
-    const { deps } = fakeDeps();
-    expect(await evaluateOAuthSignIn(googleInput(GOOGLE_OK, 12345), deps)).toEqual({
-      allowed: false,
+  it('providerAccountId가 문자열이 아니거나 비어 있으면 거부한다', () => {
+    expect(validateOAuthProfile(googleInput(GOOGLE_OK, 12345))).toEqual({
+      ok: false,
       reason: 'provider-account-id-invalid',
     });
-    expect(await evaluateOAuthSignIn(googleInput(GOOGLE_OK, ''), deps)).toEqual({
-      allowed: false,
+    expect(validateOAuthProfile(googleInput(GOOGLE_OK, ''))).toEqual({
+      ok: false,
       reason: 'provider-account-id-invalid',
     });
   });
 
-  it('지원하지 않는 provider는 거부한다', async () => {
-    const { deps } = fakeDeps();
-    const decision = await evaluateOAuthSignIn(
-      { providerId: 'github', profile: GOOGLE_OK, providerAccountId: 'x' },
-      deps,
-    );
-    expect(decision).toEqual({ allowed: false, reason: 'unsupported-provider' });
-  });
-
-  it('비정상 형식·길이 초과 이메일은 emailSchema에서 거부된다', async () => {
-    const { deps } = fakeDeps();
+  it('지원하지 않는 provider는 거부한다', () => {
     expect(
-      await evaluateOAuthSignIn(googleInput({ ...GOOGLE_OK, email: 'not-an-email' }), deps),
-    ).toEqual({ allowed: false, reason: 'email-invalid' });
+      validateOAuthProfile({ providerId: 'github', profile: GOOGLE_OK, providerAccountId: 'x' }),
+    ).toEqual({ ok: false, reason: 'unsupported-provider' });
+  });
 
+  it('비정상 형식·길이 초과 이메일은 emailSchema에서 거부된다', () => {
+    expect(validateOAuthProfile(googleInput({ ...GOOGLE_OK, email: 'not-an-email' }))).toEqual({
+      ok: false,
+      reason: 'email-invalid',
+    });
     const tooLong = `${'a'.repeat(250)}@example.com`;
-    expect(await evaluateOAuthSignIn(googleInput({ ...GOOGLE_OK, email: tooLong }), deps)).toEqual({
-      allowed: false,
+    expect(validateOAuthProfile(googleInput({ ...GOOGLE_OK, email: tooLong }))).toEqual({
+      ok: false,
       reason: 'email-invalid',
     });
   });
 });
 
-describe('evaluateOAuthSignIn — 계정 상태', () => {
-  const activeOwner = { user: { status: 'ACTIVE', deletedAt: null } };
-
-  it('Account가 이미 있으면(재로그인) 소유자가 ACTIVE일 때만 허용한다', async () => {
-    const { deps, accountFindUnique } = fakeDeps({ account: activeOwner });
-    const decision = await evaluateOAuthSignIn(googleInput(GOOGLE_OK), deps);
-    expect(decision).toEqual({ allowed: true, kind: 'existing-account' });
-    expect(accountFindUnique).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          provider_providerAccountId: {
-            provider: 'google',
-            providerAccountId: 'google-sub-1',
-          },
-        },
-      }),
-    );
+describe('normalizeKakaoId', () => {
+  it('안전 정수·숫자 문자열만 정규화한다', () => {
+    expect(normalizeKakaoId(9_900_000_001)).toBe('9900000001');
+    expect(normalizeKakaoId(0)).toBe('0');
+    expect(normalizeKakaoId(' 12345 ')).toBe('12345');
+    expect(normalizeKakaoId(Number.MAX_SAFE_INTEGER)).toBe(String(Number.MAX_SAFE_INTEGER));
   });
 
   it.each([
-    ['SUSPENDED', { status: 'SUSPENDED', deletedAt: null }],
-    ['DELETED', { status: 'DELETED', deletedAt: null }],
-    ['deletedAt 설정', { status: 'ACTIVE', deletedAt: new Date() }],
-  ])('Account 소유자가 %s이면 재로그인을 거부한다', async (_label, owner) => {
-    const { deps } = fakeDeps({ account: { user: owner } });
-    const decision = await evaluateOAuthSignIn(googleInput(GOOGLE_OK), deps);
-    expect(decision).toEqual({ allowed: false, reason: 'account-owner-not-active' });
-  });
-
-  it.each([
-    ['SUSPENDED', { status: 'SUSPENDED', deletedAt: null }],
-    ['DELETED', { status: 'DELETED', deletedAt: null }],
-    ['deletedAt 설정', { status: 'ACTIVE', deletedAt: new Date() }],
-  ])('동일 이메일 기존 user가 %s이면 신규 연결 시도도 거부한다', async (_label, user) => {
-    const { deps } = fakeDeps({ user });
-    const decision = await evaluateOAuthSignIn(googleInput(GOOGLE_OK), deps);
-    expect(decision).toEqual({ allowed: false, reason: 'existing-user-not-active' });
-  });
-
-  it('동일 이메일 ACTIVE user가 있어도 허용은 하되 자동 연결은 core가 차단한다 (fail-safe 위임)', async () => {
-    const { deps } = fakeDeps({ user: { status: 'ACTIVE', deletedAt: null } });
-    const decision = await evaluateOAuthSignIn(googleInput(GOOGLE_OK), deps);
-    expect(decision).toEqual({ allowed: true, kind: 'no-account' });
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+    ['소수', 1.5],
+    ['음수', -10],
+    ['MAX_SAFE_INTEGER+1', Number.MAX_SAFE_INTEGER + 1],
+    ['빈 문자열', ''],
+    ['공백', '  '],
+    ['비숫자', 'abc'],
+    ['혼합', '123x'],
+    ['null', null],
+    ['undefined', undefined],
+    ['객체', {}],
+  ])('거부: %s', (_label, value) => {
+    expect(normalizeKakaoId(value)).toBeUndefined();
   });
 });
 
 describe('profile 매핑 (Prisma User 컬럼만, throw 금지)', () => {
-  it('Google: 매핑·이메일 정규화, sub 누락 시 id는 undefined 유지', async () => {
+  it('Google: 매핑·이메일 정규화, sub 누락 시 id는 undefined 유지', () => {
     expect(
       mapGoogleProfile({
         sub: 's1',
@@ -216,7 +212,7 @@ describe('profile 매핑 (Prisma User 컬럼만, throw 금지)', () => {
     expect(mapGoogleProfile({ sub: 123 as unknown as string }).id).toBeUndefined();
   });
 
-  it('Kakao: 숫자 id 문자열화, 중첩 프로필 매핑, 누락 안전', async () => {
+  it('Kakao: 정규화 id만 인정, 중첩 프로필 매핑, 누락·unsafe 안전', () => {
     expect(
       mapKakaoProfile({
         id: 999,
@@ -239,6 +235,8 @@ describe('profile 매핑 (Prisma User 컬럼만, throw 금지)', () => {
       image: undefined,
     });
     expect(mapKakaoProfile({ id: Number.NaN }).id).toBeUndefined();
+    expect(mapKakaoProfile({ id: 1.5 }).id).toBeUndefined();
+    expect(mapKakaoProfile({ id: Number.MAX_SAFE_INTEGER + 1 }).id).toBeUndefined();
   });
 
   it('isOAuthProviderId는 google/kakao만 인정한다', () => {

@@ -2,9 +2,7 @@ import { createHash } from 'node:crypto';
 
 import NextAuth from 'next-auth';
 
-import { buildAuthConfig, withOAuthRequestContext } from '@/auth';
-import { prisma } from '@/lib/prisma';
-import { createOAuthAdapter, type OAuthAdapterHooks } from '@/modules/auth/adapter';
+import { buildAuthConfig, withOAuthRequestContext, type BuildAuthConfigOverrides } from '@/auth';
 
 import { asHandlerRequest, BASE_URL, CookieJar, type AuthHandlers } from './session';
 
@@ -222,15 +220,15 @@ export interface OAuthTestApp {
 }
 
 /**
- * fake network를 주입한 실제 NextAuth 인스턴스 — adapter도 production과 같은
- * 팩토리(createOAuthAdapter)를 사용한다. hooks는 실패 주입 테스트 전용.
+ * fake network를 주입한 실제 NextAuth 인스턴스 — 구성은 production과 동일한
+ * buildAuthConfig 경로. identityHooks는 ensureOAuthIdentity transaction 실패
+ * 주입, adapter는 commit 이후 core 후속 처리 실패 시뮬레이션 전용.
  */
-export function createOAuthTestApp(hooks?: OAuthAdapterHooks): OAuthTestApp {
+export function createOAuthTestApp(
+  overrides: Pick<BuildAuthConfigOverrides, 'identityHooks' | 'adapter'> = {},
+): OAuthTestApp {
   const network = new FakeOAuthNetwork();
-  const config = buildAuthConfig({
-    oauthFetch: network.fetch,
-    adapter: createOAuthAdapter(prisma, hooks),
-  });
+  const config = buildAuthConfig({ oauthFetch: network.fetch, ...overrides });
   const instance = NextAuth(config);
   return { auth: withOAuthRequestContext(instance.handlers), network };
 }

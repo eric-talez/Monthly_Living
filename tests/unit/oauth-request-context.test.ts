@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildOAuthRequestContext,
   getOAuthRequestContext,
+  hasAuthSessionCookie,
   localeFromRequestCookies,
   runWithOAuthRequestContext,
 } from '@/modules/auth/oauth-request-context';
@@ -57,16 +59,47 @@ describe('localeFromRequestCookies — callback-url 쿠키에서 locale 복원',
   });
 });
 
+describe('hasAuthSessionCookie — 세션 쿠키 존재 감지 (chunk 변형 포함)', () => {
+  it.each([
+    ['기본 이름', 'authjs.session-token=abc'],
+    ['__Secure- 변형', '__Secure-authjs.session-token=abc'],
+    ['chunk .0', 'authjs.session-token.0=abc'],
+    ['chunk .1', 'authjs.session-token.1=abc'],
+    ['__Secure- chunk', '__Secure-authjs.session-token.0=abc'],
+    ['다른 쿠키와 혼재', `other=1; authjs.callback-url=${encoded('/')}; authjs.session-token=x`],
+  ])('감지: %s', (_label, header) => {
+    expect(hasAuthSessionCookie(requestWithCookie(header))).toBe(true);
+  });
+
+  it.each([
+    ['쿠키 없음', undefined],
+    ['무관한 쿠키만', 'authjs.csrf-token=abc; NEXT_LOCALE=ko'],
+    ['이름 부분 일치(다른 접두)', 'my-authjs.session-token=abc'],
+    ['숫자 아닌 suffix', 'authjs.session-token.abc=x'],
+    ['callback-url만 존재', `authjs.callback-url=${encoded('/en')}`],
+  ])('비감지: %s', (_label, header) => {
+    expect(hasAuthSessionCookie(requestWithCookie(header))).toBe(false);
+  });
+
+  it('buildOAuthRequestContext는 locale과 세션 쿠키 존재를 함께 담는다', () => {
+    const request = requestWithCookie(
+      `authjs.callback-url=${encoded('http://localhost:3000/en')}; authjs.session-token.0=x`,
+    );
+    expect(buildOAuthRequestContext(request)).toEqual({
+      locale: 'en',
+      hasAuthSessionCookie: true,
+    });
+  });
+});
+
 describe('OAuth 요청 컨텍스트 (AsyncLocalStorage)', () => {
   it('run 안에서만 컨텍스트가 보이고, await을 건너도 유지된다', async () => {
     expect(getOAuthRequestContext()).toBeUndefined();
 
-    await runWithOAuthRequestContext({ locale: 'en' }, async () => {
+    await runWithOAuthRequestContext({ locale: 'en', hasAuthSessionCookie: false }, async () => {
       expect(getOAuthRequestContext()?.locale).toBe('en');
       await Promise.resolve();
-      getOAuthRequestContext()!.provisionalUserId = 'user-1';
-      await Promise.resolve();
-      expect(getOAuthRequestContext()?.provisionalUserId).toBe('user-1');
+      expect(getOAuthRequestContext()?.hasAuthSessionCookie).toBe(false);
     });
 
     expect(getOAuthRequestContext()).toBeUndefined();
@@ -75,18 +108,14 @@ describe('OAuth 요청 컨텍스트 (AsyncLocalStorage)', () => {
   it('동시 실행되는 컨텍스트는 서로 격리된다', async () => {
     const seen: Array<string | undefined> = [];
     await Promise.all([
-      runWithOAuthRequestContext({ locale: 'ko' }, async () => {
+      runWithOAuthRequestContext({ locale: 'ko', hasAuthSessionCookie: false }, async () => {
         await Promise.resolve();
-        getOAuthRequestContext()!.provisionalUserId = 'a';
-        await Promise.resolve();
-        seen.push(getOAuthRequestContext()?.provisionalUserId);
+        seen.push(getOAuthRequestContext()?.locale);
       }),
-      runWithOAuthRequestContext({ locale: 'en' }, async () => {
-        getOAuthRequestContext()!.provisionalUserId = 'b';
-        await Promise.resolve();
-        seen.push(getOAuthRequestContext()?.provisionalUserId);
+      runWithOAuthRequestContext({ locale: 'en', hasAuthSessionCookie: true }, async () => {
+        seen.push(getOAuthRequestContext()?.locale);
       }),
     ]);
-    expect(seen.sort()).toEqual(['a', 'b']);
+    expect(seen.sort()).toEqual(['en', 'ko']);
   });
 });

@@ -7,11 +7,14 @@ import Kakao from 'next-auth/providers/kakao';
 import { ERROR_CODES, isAppError } from '@/lib/errors';
 import { prisma } from '@/lib/prisma';
 import { getClientIp } from '@/lib/request-ip';
+import { routing } from '@/i18n/routing';
 import { createOAuthAdapter } from '@/modules/auth/adapter';
-import { evaluateOAuthSignIn, mapGoogleProfile, mapKakaoProfile } from '@/modules/auth/oauth';
+import { mapGoogleProfile, mapKakaoProfile, validateOAuthProfile } from '@/modules/auth/oauth';
+import { ensureOAuthIdentity, type OAuthIdentityHooks } from '@/modules/auth/oauth-identity';
 import { getEnabledOAuthProviders } from '@/modules/auth/oauth-providers';
 import {
-  localeFromRequestCookies,
+  buildOAuthRequestContext,
+  getOAuthRequestContext,
   runWithOAuthRequestContext,
 } from '@/modules/auth/oauth-request-context';
 import { authorizeLogin, getSessionClaims } from '@/modules/auth/service';
@@ -21,15 +24,17 @@ import { authorizeLogin, getSessionClaims } from '@/modules/auth/service';
  *
  * - adapter가 있으면 세션 전략 기본값이 'database'가 되므로(@auth/core lib/init.js 실측)
  *   `strategy: 'jwt'`를 반드시 명시한다 — 이 스키마에는 Session 모델이 없다.
- * - adapter는 OAuth(Account 연결) 전용 custom adapter다 — createUser/linkAccount의
- *   원자성·연결 불변식은 modules/auth/adapter.ts가 강제한다. Credentials 흐름은
- *   adapter를 사용하지 않으며, adapter의 deleteUser()는 어떤 경로에서도 호출하지
- *   않는다 (계정 탈퇴는 별도 soft delete 서비스 — 결정 문서).
+ * - adapter는 조회 전용이다 — mutation(createUser/linkAccount/deleteUser/
+ *   unlinkAccount)은 전부 fail-closed로 차단된다(modules/auth/adapter.ts).
+ *   신규 OAuth identity는 signIn callback의 ensureOAuthIdentity() 단일
+ *   transaction에서만 생성된다. Credentials 흐름은 adapter를 사용하지 않는다
+ *   (계정 탈퇴는 별도 soft delete 서비스 — 결정 문서).
  * - 로그인 검증·rate limit·LoginAttempt 기록은 전부 authorize() → 서비스 단일
  *   지점에서 강제된다. server action을 거치지 않는 직접 POST
  *   (/api/auth/callback/credentials)도 같은 경로를 지난다.
- * - OAuth 로그인 정책(provider 검증 이메일·계정 상태·providerAccountId 일치)은
- *   signIn callback → modules/auth/oauth.ts 단일 지점에서 강제된다
+ * - OAuth 로그인 정책(provider 검증 이메일·providerAccountId 일치·계정 상태·
+ *   원자적 identity 생성)은 signIn callback → modules/auth/oauth.ts(검증) +
+ *   oauth-identity.ts(transaction) 단일 지점에서 강제된다
  *   (docs/decisions/oauth-account-linking.md).
  * - `debug`는 어떤 환경에서도 활성화하지 않는다 — @auth/core는 debug 수준에서
  *   token이 포함된 인자(adapter_linkAccount args 등)를 출력한다 (init.js 실측).
@@ -47,8 +52,10 @@ export interface BuildAuthConfigOverrides {
    * (modules/auth/deps.ts와 같은 주입 철학). production은 전달하지 않는다.
    */
   oauthFetch?: typeof fetch;
-  /** 테스트 전용 — 실패 주입 hook을 단 custom adapter 주입 (동일 팩토리 사용) */
+  /** 테스트 전용 — adapter 대체 (예: commit 이후 실패 시뮬레이션용 read 실패 주입) */
   adapter?: Adapter;
+  /** 테스트 전용 — ensureOAuthIdentity transaction 내부 실패 주입 지점 */
+  identityHooks?: OAuthIdentityHooks;
 }
 
 export function buildAuthConfig(overrides: BuildAuthConfigOverrides = {}): NextAuthConfig {
@@ -120,10 +127,14 @@ export function buildAuthConfig(overrides: BuildAuthConfigOverrides = {}): NextA
     providers,
     callbacks: {
       /**
-       * OAuth 로그인 정책의 단일 강제 지점 — @auth/core는 이 callback을
-       * handleLoginOrRegister(사용자 생성·Account 연결) 이전에 실행한다
-       * (lib/actions/callback/index.js:63→70 실측). false 반환은 AccessDenied로
-       * 변환되어 /login의 일반화 메시지로만 노출된다.
+       * OAuth 로그인 정책·identity 생성의 단일 강제 지점 — @auth/core는 이
+       * callback을 handleLoginOrRegister 이전에 실행하므로(index.js:63→70 실측)
+       * 여기서 프로필 검증 후 ensureOAuthIdentity()가 신규 identity
+       * (User+동의+Account)를 **하나의 transaction**으로 사전 생성한다.
+       * true 반환 후 core는 Account를 재조회해(handle-login.js:175) 기존 사용자
+       * 로그인 경로를 탄다 — 최초 OAuth 로그인도 core 내부적으로는
+       * isNewUser=false / trigger='signIn'이다 (온보딩은 isNewUser에 의존 금지).
+       * false 반환은 AccessDenied로 변환되어 /login의 일반화 메시지로만 노출된다.
        */
       signIn: async ({ account, profile }) => {
         if (!account || account.type === 'credentials') {
@@ -134,15 +145,32 @@ export function buildAuthConfig(overrides: BuildAuthConfigOverrides = {}): NextA
           // email/webauthn 등 구성하지 않은 provider 유형은 fail-closed
           return false;
         }
-        const decision = await evaluateOAuthSignIn(
+        const validated = validateOAuthProfile({
+          providerId: account.provider,
+          profile,
+          providerAccountId: account.providerAccountId,
+        });
+        if (!validated.ok) {
+          return false;
+        }
+        // 컨텍스트가 없으면(래퍼 밖 호출) fail-closed: 세션 존재로 간주해
+        // 신규 identity 생성을 막는다 — 기존 identity 로그인만 허용.
+        const context = getOAuthRequestContext();
+        const result = await ensureOAuthIdentity(
           {
-            providerId: account.provider,
-            profile,
-            providerAccountId: account.providerAccountId,
+            providerId: validated.providerId,
+            providerAccountType: account.type,
+            providerAccountId: validated.providerAccountId,
+            email: validated.email,
+            name: validated.name,
+            image: validated.image,
+            locale: context?.locale ?? routing.defaultLocale,
+            hasAuthSessionCookie: context?.hasAuthSessionCookie ?? true,
           },
           { db: prisma },
+          overrides.identityHooks,
         );
-        return decision.allowed;
+        return result.ok;
       },
       /**
        * JWT 전략에서는 세션을 읽을 때마다 이 callback이 실행된다.
@@ -200,16 +228,14 @@ type NextAuthHandlers = ReturnType<typeof NextAuth>['handlers'];
 
 /**
  * route handler 래퍼 — 요청마다 OAuth 요청 컨텍스트(AsyncLocalStorage)를 연다.
- * adapter(createUser/linkAccount)는 요청 객체를 받지 못하므로, 신규 가입
- * locale(callback-url 쿠키에서 복원)과 provisional user 추적(보상 정리 provenance)을
- * 이 컨텍스트로 전달한다. production과 통합 테스트가 같은 래퍼를 사용한다.
+ * signIn callback은 요청 객체를 받지 못하므로, 신규 가입 locale(callback-url
+ * 쿠키에서 복원)과 세션 쿠키 존재 여부(세션 편승 연결 차단 근거)를 이 컨텍스트로
+ * 전달한다. production과 통합 테스트가 같은 래퍼를 사용한다.
  */
 export function withOAuthRequestContext(handlers: NextAuthHandlers): NextAuthHandlers {
   const wrap = (handler: NextAuthHandlers['GET']): NextAuthHandlers['GET'] => {
     return (request) =>
-      runWithOAuthRequestContext({ locale: localeFromRequestCookies(request) }, () =>
-        handler(request),
-      );
+      runWithOAuthRequestContext(buildOAuthRequestContext(request), () => handler(request));
   };
   return { GET: wrap(handlers.GET), POST: wrap(handlers.POST) };
 }

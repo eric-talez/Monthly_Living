@@ -47,6 +47,11 @@ export class CookieJar {
   has(name: string): boolean {
     return this.store.has(name);
   }
+
+  /** 테스트 시나리오용 수동 쿠키 주입 (예: stale/chunk 세션 쿠키 시뮬레이션) */
+  set(name: string, value: string): void {
+    this.store.set(name, value);
+  }
 }
 
 export const SESSION_COOKIE = 'authjs.session-token';
