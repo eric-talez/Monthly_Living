@@ -12,6 +12,10 @@ const databaseUrl = process.env.DATABASE_URL;
 export default defineConfig({
   // multi-file schema: prisma/schema.prisma(datasource·generator) + prisma/models/*.prisma
   schema: 'prisma',
+  migrations: {
+    // Prisma 7: `prisma db seed`와 `migrate reset`(자동 seed)이 이 명령을 사용한다.
+    seed: 'tsx prisma/seed.ts',
+  },
   // 런타임 연결은 src/lib/prisma.ts의 driver adapter가 담당한다.
   ...(databaseUrl ? { datasource: { url: databaseUrl } } : {}),
 });

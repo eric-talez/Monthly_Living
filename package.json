@@ -18,6 +18,10 @@
     "db:format": "prisma format",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
+    "db:migrate:draft": "prisma migrate dev --create-only",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:test:prepare": "tsx scripts/db-test-prepare.ts",
     "db:reset": "tsx scripts/db-reset.ts --dev",
     "db:reset:test": "tsx scripts/db-reset.ts --test"
   },

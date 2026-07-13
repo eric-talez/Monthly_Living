@@ -11,7 +11,7 @@
 | 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃   | ✅ 완료 (2026-07-11) |
 | 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                         | ✅ 완료 (2026-07-11) |
 | 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12) |
-| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ⬜ 미착수            |
+| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ✅ 완료 (2026-07-12) |
 | 1C    | Authentication — Auth.js v5, 이메일 인증, rate limit                                      | ⬜ 미착수            |
 | 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수            |
 | 2     | Public Marketplace                                                                        | ⬜ 미착수            |
@@ -152,6 +152,40 @@ reset 왕복 → CHECK 위반 spot test.
   test는 `*_test` suffix 강제, `?schema=` public 이외 거부.
 - **migration 재생성**: `prisma migrate diff --from-empty --to-schema --script`로
   DB 무접촉 재생성 (`20260712041838_init` — 기존 폴더 교체, initial migration 1개 유지).
+
+## Phase 1B-2B 기록 (2026-07-12) — Apply, Seed, Reset Verification
+
+**적용**: `prisma migrate deploy`로 dev·test DB에 initial migration 적용
+(41 테이블·58 CHECK·NULLS NOT DISTINCT·partial unique 실측 확인).
+`migrate dev` 적용 모드는 사용하지 않음 — shadow drift가 custom index를
+drop 제안할 수 있어 draft(--create-only) + deploy 워크플로를 표준으로 채택 (README).
+
+**CHECK 위반 spot test**: 트랜잭션 내 SAVEPOINT 방식으로 8종 위반 전부
+정확한 제약 이름으로 거부됨을 실측(위도 범위, 환율>0, 쿠폰 NULL 우회, 참가자 수,
+reservedCount≤capacity, slot NULLS NOT DISTINCT 중복, 일반 대화 partial unique,
+quote total 등식) + 정상 대조군 성공. 전체 ROLLBACK — 잔여 데이터 0.
+
+**Seed**: `prisma/seed.ts` + `seed-data/` 7개 모듈. idempotent(2회 실행 카운트 동일):
+users 22 · travelerProfiles 1 · expertProfiles 20 · serviceAreas 27 · destinations 9 ·
+categories 15 · programs 40(공개 38+DRAFT 2) · programMedia 80 · exchangeRates 12 ·
+platformSettings 5 · consentRecords 8. 테스트 계정 4종(`Test1234!`) README 문서화.
+
+**Prisma 7.8 실측 불일치 (중요)**: 이전 전제("migrate reset이 generate+seed 자동
+실행")와 달리 **reset은 둘 다 자동 실행하지 않음**을 실측으로 확인 → `db:reset`이
+dev 대상에 한해 reset 성공 후 `prisma db seed`를 명시 실행하도록 수정
+(test 대상은 빈 스키마 유지). 왕복 재검증: reset→migration→seed→카운트 동일.
+
+**Prisma AI 안전장치**: `migrate reset`이 AI 에이전트 호출을 차단
+(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION 요구) → 사용자에게 대상
+(localhost/handalsalgi_dev)·비가역성·위험 평가를 보고하고 **명시 동의를 받은 뒤**
+동의 문구를 환경변수로 전달해 실행함 (2026-07-12).
+
+**가드 거부 실증**: 비 localhost host / 시스템 DB / dev 이름 규칙 위반 /
+test `_test` 미포함 / schema≠public / NODE_ENV=production / URL 파싱 실패
+— 7종 모두 거부 메시지와 함께 exit 1 확인. `db:test:prepare`(migrate deploy,
+가드 경유) 추가 — test DB는 스키마만 적용, 데이터 0 유지.
+
+**검증**: db:format/validate/generate, format:check, lint, typecheck, build 모두 exit 0.
 
 ## 알려진 문제
 
