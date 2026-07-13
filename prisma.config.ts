@@ -13,7 +13,8 @@ export default defineConfig({
   // multi-file schema: prisma/schema.prisma(datasource·generator) + prisma/models/*.prisma
   schema: 'prisma',
   migrations: {
-    // Prisma 7: `prisma db seed`와 `migrate reset`(자동 seed)이 이 명령을 사용한다.
+    // `prisma db seed`가 이 명령을 사용한다.
+    // (Prisma 7.8 실측: `migrate reset`은 seed를 자동 실행하지 않는다 — scripts/db-reset.ts 참고)
     seed: 'tsx prisma/seed.ts',
   },
   // 런타임 연결은 src/lib/prisma.ts의 driver adapter가 담당한다.
