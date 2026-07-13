@@ -13,7 +13,8 @@
 | 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12)   |
 | 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ✅ 완료 (2026-07-12)   |
 | 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit        | ✅ 완료 (2026-07-12)   |
-| 1C-2  | Authentication 확장 — Google/Kakao OAuth, 계정 탈퇴(soft delete), 프로필 온보딩           | ⬜ 미착수 (1C 진행 중) |
+| 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI      | ✅ 완료 (2026-07-13)\* |
+| 1C-2B | Authentication 확장 잔여 — 계정 탈퇴(soft delete), 프로필 온보딩, 권한별 redirect         | ⬜ 미착수 (1C 진행 중) |
 | 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수              |
 | 2     | Public Marketplace                                                                        | ⬜ 미착수              |
 | 3     | Recommendation                                                                            | ⬜ 미착수              |
@@ -321,6 +322,116 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
 **다음 (Phase 1C-2)**: Google/Kakao OAuth(Account 연결·이메일 정규화 일관성),
 계정 탈퇴(soft delete+하드 익명화, adapter deleteUser 미사용), 프로필 온보딩,
 로그인 후 권한별 리다이렉트.
+
+## Phase 1C-2A 기록 (2026-07-13) — Google/Kakao OAuth Identity
+
+> \* 완료 범위 구분: **코드·자동 테스트(결정적 fake provider network 통합 테스트 포함)·데모 env
+> 브라우저 검증까지 완료**. 실제 Google Cloud Console/Kakao Developers credential을 사용한
+> 외부 provider 왕복 E2E는 **credential 발급 대기 항목**이며 완료로 간주하지 않는다 (아래 참고).
+
+**구현 내용**
+
+- **Provider 구성 (fail-closed)**: `AUTH_GOOGLE_ID/SECRET`, `AUTH_KAKAO_ID/SECRET` env 쌍이 모두
+  설정된 provider만 활성화. 부분 설정·빈 값·공백만인 값은 명확한 메시지로 기동 실패
+  (`src/lib/env.ts` superRefine). checks 명시: Google `pkce+state+nonce`, Kakao `pkce+state`
+  (@auth/core 기본값은 pkce뿐이라 state 검증이 생략됨 — 실측 후 보강).
+- **계정 생성·연결 정책** (`docs/decisions/oauth-account-linking.md` — @auth/core@0.41.2 실행
+  순서 파일:행 실측 인용 포함):
+  - `allowDangerousEmailAccountLinking` 미사용 — 동일 이메일(상태 무관)은 자동 연결하지 않고
+    거부(선점 계정 탈취·검증 이력성 근거), 일반화 메시지만 노출.
+  - signIn callback 단일 지점: `modules/auth/oauth.ts`(프로필 검증 — provider 검증 이메일만,
+    Google `email_verified===true`/Kakao `is_email_valid&&is_email_verified===true` boolean 엄격,
+    정규화 프로필 id=providerAccountId 정확 일치, **Kakao 회원번호는 안전 정수(비음수)·숫자
+    문자열 1~20자리만** — NaN/Infinity/소수/음수/2^53 초과 거부) →
+    `modules/auth/oauth-identity.ts`의 **`ensureOAuthIdentity()`**.
+  - **원자적 identity 사전 생성**: 신규 가입은 signIn callback 안에서 **하나의 Prisma
+    transaction**으로 User(emailVerified=now·preferredLanguage·TRAVELER/ACTIVE)+ConsentRecord
+    3행(TERMS/PRIVACY true·MARKETING false)+Account(4필드만)를 전부 생성하거나 전부 rollback —
+    **어느 시점에 프로세스가 죽어도 고아 User가 unique email을 점유하는 창이 없다.** signIn
+    true 이후 core는 Account를 재조회해(handle-login.js:175) 기존 사용자 로그인 경로를 탄다
+    (**최초 OAuth 로그인도 core 내부적으로 isNewUser=false / trigger='signIn'** — 향후 온보딩은
+    isNewUser에 의존 금지, `ensureOAuthIdentity`의 created/existing 반환값 사용).
+  - **adapter mutation fail-closed** (`modules/auth/adapter.ts`): createUser/linkAccount/
+    deleteUser/unlinkAccount 전부 비민감 오류 throw — 정상 flow에서 호출되지 않음이 구조적으로
+    보장되고, 성공한 flow 자체가 사전 생성 경로만 지났다는 lifecycle 증명이 된다.
+  - **세션 편승 연결 차단**: handler 래퍼가 `authjs.session-token`(+`__Secure-`·chunk `.N`
+    변형) 존재를 감지 — 미등록 identity + 세션 쿠키 존재면 신규 생성 거부(쿠키 유효성 무관,
+    fail-closed). stale 쿠키로 신규 가입이 막히는 것은 문서화된 fail-safe UX 한계(로그아웃으로
+    해소, 기존 identity 재로그인은 무관).
+  - **race 처리**: unique 충돌(P2002)은 transaction 전체 rollback(부분 상태·hard delete 없음)
+    후 재조회로 분류 — 동일 providerAccountId면 승자 identity로 로그인 수렴, 동일 이메일이면
+    일반화 오류.
+  - **provider token 미저장**: `account: () => ({})` + Account 생성 4필드 명시 이중 강제 —
+    access/refresh/id_token/scope 등 전 token 컬럼 null (identity 로그인만 사용하는 phase).
+- **locale 전파**: OAuth 버튼 액션의 localized redirectTo → Auth.js callback-url 쿠키(같은
+  origin 검증) → handler 래퍼(AsyncLocalStorage) → ensureOAuthIdentity. `/en` 가입=en,
+  기본=ko (테스트 증명).
+- **UI**: 로그인·회원가입 화면에 활성 provider 버튼만 렌더(비활성 미표시, 액션에서도 거부) +
+  "또는" 구분선 + 동의 고지(ko/en). `?error=` 값은 CredentialsSignin 외 전부 신규 `oauthError`
+  일반화 메시지로 표시(내부 오류·계정 존재 비노출). `pages.error='/login'`으로 AccessDenied류도
+  기본 영문 페이지 대신 일반화 메시지.
+- schema/migration **변경 없음** (defaultAccount 필터 실측으로 현 Account 스키마 충분 확인),
+  신규 의존성 없음, DB reset 미실행.
+
+**원자성 재검토 반영 (2026-07-13, PR #3 추가 커밋)**
+
+- **blocker 해소 — 신규 가입 원자성 재설계**: 기존 구조(adapter createUser/linkAccount 분리
+  transaction + linkAccount catch에서 보상 삭제)는 createUser commit 직후 프로세스 종료 시
+  Account/password 없는 고아 User가 unique email을 영구 점유하는 창이 있었다(OAuth·Credentials
+  가입 동시 차단). 보상 삭제 설계와 provisional user 추적을 **전부 제거**하고, signIn callback의
+  `ensureOAuthIdentity()` 단일 transaction 사전 생성으로 교체 — 부분 상태가 성립할 수 없다.
+- adapter mutation 전부 fail-closed 전환, 세션 쿠키 감지(세션 편승 차단을 DB 가드에서 요청
+  계층으로 이동), Kakao 회원번호 unsafe 값(비안전 정수·소수·음수·비숫자 문자열) 거부 강화,
+  race 시 rollback 후 재조회 분류(동일 providerAccountId → 승자 수렴 / 동일 이메일 → 일반화
+  오류) 추가. 기존 보상 삭제 테스트는 실패 주입 3지점(User/동의/Account 생성 후)·commit 후
+  core 실패·stale/chunk 쿠키·barrier 결정적 race 테스트로 교체.
+
+**검증**
+
+- 8종 전부 통과: `db:generate`/`db:format`/`db:validate`/`format:check`/`lint`/`typecheck`/
+  `test`/`build`. 테스트 **197개 통과** (1C-1 기준 90개 전부 무수정 회귀 통과 + 신규 107개:
+  unit 59 — env fail-closed 매트릭스·프로필 검증 매트릭스(Kakao unsafe id 극단값 포함)·profile
+  매핑·locale 복원/세션 쿠키 감지/ALS 격리, integration 48 — 실제 handlers로
+  csrf→signin→authorization redirect(state/PKCE 파싱)→callback→session 왕복 + adapter
+  fail-closed 직접 검증).
+- 통합 테스트는 helper mock이 아니라 **고정 next-auth handlers 전체 flow**를 구동 — provider
+  네트워크만 customFetch 주입 fake(discovery/token/userinfo). **서명 없는 well-formed JWS
+  id_token은 handler/claim(iss/aud/exp/nonce)/DB lifecycle 검증이며, 실제 Google 서명·TLS·실
+  endpoint 검증이 아니다**(이 고정 스택이 이 flow에서 id_token 서명을 검증하지 않음을 실측 —
+  JWKS fetch 부재). PKCE S256은 fake token endpoint가 실제 검증.
+- 핵심 시나리오: 신규 가입(양 provider — TRAVELER/ACTIVE/emailVerified/동의 정확 3행/token
+  컬럼 전부 null), 재로그인 idempotency(동의 중복 없음·provider 이메일 변경 시에도 소유자
+  재지정·이메일 갱신 없음), 이메일 누락/미검증(boolean 아님 포함)/비정상 형식/식별자 누락·
+  불일치/Kakao unsafe id 거부, 기존 credentials 동일 이메일(중복 User 없음+credentials 로그인
+  회귀 없음), SUSPENDED/DELETED 차단(최초·재로그인), **세션 쿠키 존재 시 미등록 identity 거부
+  3종(credentials 세션·OAuth 세션·stale/chunk garbage 쿠키 — 기존 identity 재로그인은 허용)**,
+  **transaction 실패 주입 3지점 → User/ConsentRecord/Account 전부 0+기존 사용자 무손상+재시도
+  정상**, **commit 후 core 후속 처리 실패 → 완전한 identity 1세트 유지+재시도 로그인 성공**,
+  **barrier 결정적 race 2종**(동일 providerAccountId → identity 1세트·양쪽 같은 사용자 수렴;
+  동일 이메일 google/kakao → 승자 1세트·패자 일반화 오류·고아 0), adapter mutation 직접 호출
+  fail-closed, ko/en preferredLanguage, 세션 JSON·콘솔 스파이에 token/secret 문자열 부재.
+- 브라우저 실측(데모 env dev 서버): 버튼·구분선·고지 렌더(ko/en), `?error=` 일반화 메시지,
+  버튼 클릭 → 실제 `accounts.google.com` authorization redirect 도달(데모 client id라
+  `invalid_client` — 예상된 한계 지점), OAuth env 미설정 시 섹션 전체 미렌더, 서버 로그에
+  token/secret 문자열 없음.
+
+**실제 credential 없이 검증하지 못한 항목 (대기)**
+
+- Google Cloud Console/Kakao Developers 앱 등록, redirect URI 등록, Kakao 동의항목
+  (카카오계정 이메일) 활성화, 실제 동의 화면 왕복, 실 프로필 payload 형태 차이,
+  실제 Google id_token 서명·TLS·실 endpoint 동작.
+- staging/production 도메인에서의 `__Secure-` 쿠키 동작(코드는 두 이름 모두 처리 — 단위 테스트만).
+
+**알려진 한계 (1C-2A 시점 — 상세는 결정 문서)**
+
+- 동일 이메일 다중 provider 로그인 미지원(일반화 오류) — 명시적 연결 UI+재인증은 후속 phase.
+- stale 세션 쿠키가 남아 있으면 신규 OAuth 가입이 거부된다(fail-safe UX 한계 — 로그아웃으로
+  해소, 기존 identity 재로그인은 무관).
+- OAuth 경로에 LoginAttempt/rate limit 미적용(state+PKCE·provider측 방어 의존).
+- OAuth 세션은 credentialVersion null — 비밀번호 재설정과 독립(상태 차단은 동일 적용).
+- 오류 redirect가 항상 `/login`(ko 기본)으로 가 locale이 풀림 — pages 정적 문자열 제약(기존과 동일).
+- 향후 온보딩은 Auth.js isNewUser/trigger='signUp'에 의존하면 안 된다(최초 OAuth 로그인도
+  내부적으로 isNewUser=false — 결정 문서).
 
 ## 알려진 문제
 
