@@ -14,6 +14,15 @@ const serverEnvSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required. See .env.example.'),
   // 통합 테스트 전용 (선택) — 이름에 _test 필수, scripts/db-reset.ts가 검증
   TEST_DATABASE_URL: z.string().min(1).optional(),
+  // Auth.js JWT 서명·암호화 및 rate limit 키 HMAC에 사용 — fail-closed, 직접 생성 (.env.example 참고)
+  AUTH_SECRET: z
+    .string()
+    .min(
+      32,
+      'AUTH_SECRET is required (generate with `openssl rand -base64 32`). See .env.example.',
+    ),
+  // 이메일 어댑터 선택 — Phase 1C는 console만 (production 전환 조건: README 출시 Gate)
+  EMAIL_PROVIDER: z.enum(['console']).default('console'),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

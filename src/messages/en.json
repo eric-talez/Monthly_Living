@@ -6,7 +6,10 @@
   "layout": {
     "header": {
       "brand": "한달살기",
-      "homeLink": "Go to home"
+      "homeLink": "Go to home",
+      "loginLink": "Log in",
+      "logoutButton": "Log out",
+      "signedInAs": "Signed in as {email}"
     },
     "footer": {
       "description": "A premium platform for designing your month-long stay in Jeju, Thailand, and Vietnam around your goals",
@@ -46,5 +49,110 @@
     "title": "Page not found",
     "description": "The address may be incorrect, or the page may have been moved or deleted.",
     "backHome": "Back to home"
+  },
+  "auth": {
+    "common": {
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "submitting": "Processing…",
+      "errorSummaryTitle": "Please check your input",
+      "rateLimited": "Too many requests. Please try again later.",
+      "unexpectedError": "A temporary error occurred. Please try again later."
+    },
+    "login": {
+      "title": "Log in",
+      "description": "Log in with your email and password.",
+      "submit": "Log in",
+      "genericError": "The email or password is incorrect, or the email has not been verified.",
+      "resetSuccessNotice": "Your password has been reset. Please log in with your new password.",
+      "registerPrompt": "Don't have an account yet?",
+      "registerLink": "Sign up",
+      "forgotPasswordLink": "Forgot your password?"
+    },
+    "register": {
+      "title": "Sign up",
+      "description": "Create an account with your email and password.",
+      "passwordHint": "At least 8 characters, including at least one letter and one digit.",
+      "passwordConfirmLabel": "Confirm password",
+      "termsLabel": "(Required) I agree to the Terms of Service",
+      "privacyLabel": "(Required) I agree to the collection and use of personal information",
+      "marketingLabel": "(Optional) I agree to receive marketing communications",
+      "submit": "Sign up",
+      "loginPrompt": "Already have an account?",
+      "loginLink": "Log in"
+    },
+    "verifyEmail": {
+      "sent": {
+        "title": "Check your inbox",
+        "description": "Unless no account exists for that address or it is already verified, a verification email has been sent. Open the link in the email to complete your registration.",
+        "note": "If the email hasn't arrived, check your spam folder or request it again below.",
+        "resendLabel": "Registered email",
+        "resendSubmit": "Resend verification email",
+        "resendDone": "Your request has been processed. If an unverified account exists for that address, a verification email will be sent."
+      },
+      "confirm": {
+        "title": "Verify your email",
+        "description": "Click the button below to complete email verification.",
+        "submit": "Verify email",
+        "missingToken": "The verification link is invalid. Please check the link in your email."
+      },
+      "result": {
+        "verified": {
+          "title": "Email verified",
+          "description": "Your email has been verified. You can now log in."
+        },
+        "alreadyVerified": {
+          "title": "Already verified",
+          "description": "This account has already been verified. Please log in."
+        },
+        "expired": {
+          "title": "Verification link expired",
+          "description": "The verification link has expired. Please request a new verification email."
+        },
+        "invalid": {
+          "title": "Invalid verification link",
+          "description": "The verification link is invalid or has already been used. Request a new verification email if needed."
+        },
+        "loginLink": "Go to login",
+        "resendLink": "Request a new verification email"
+      }
+    },
+    "forgotPassword": {
+      "title": "Forgot password",
+      "description": "Enter your registered email and we will send you a password reset link.",
+      "submit": "Send reset link",
+      "done": "Your request has been processed. If an account exists for that address, a reset email will be sent.",
+      "backToLogin": "Back to login"
+    },
+    "resetPassword": {
+      "title": "Reset password",
+      "description": "Enter the new password you want to use.",
+      "newPasswordLabel": "New password",
+      "newPasswordConfirmLabel": "Confirm new password",
+      "submit": "Reset password",
+      "expired": "The reset link has expired. Please request a new one.",
+      "invalid": "The reset link is invalid or has already been used. Please request a new one.",
+      "missingToken": "The reset link is invalid. Please check the link in your email.",
+      "requestAgainLink": "Request a new reset link"
+    },
+    "validation": {
+      "required": "This field is required.",
+      "emailInvalid": "Please enter a valid email address.",
+      "passwordTooShort": "The password must be at least 8 characters long.",
+      "passwordTooLong": "The password is too long. Please use a shorter password.",
+      "passwordNeedsLetterAndDigit": "The password must include at least one letter and one digit.",
+      "passwordMismatch": "The passwords do not match.",
+      "consentRequired": "Please agree to the required terms."
+    },
+    "emails": {
+      "verification": {
+        "subject": "[한달살기] Please verify your email",
+        "body": "Welcome to 한달살기.\n\nOpen the link below to complete email verification. The link is valid for 24 hours and can be used only once.\n\n{url}\n\nIf you did not request this, please ignore this email."
+      },
+      "passwordReset": {
+        "subject": "[한달살기] Password reset instructions",
+        "body": "A password reset was requested for your account.\n\nSet a new password using the link below. The link is valid for 30 minutes and can be used only once.\n\n{url}\n\nIf you did not request this, please ignore this email. Your password will not be changed."
+      }
+    }
   }
 }

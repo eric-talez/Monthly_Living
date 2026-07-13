@@ -3,7 +3,7 @@
 제주 · 태국(방콕/치앙마이/푸껫/코사무이) · 베트남(다낭/호찌민/하노이/나트랑)에서 목적 기반
 한달살기 프로그램을 찾고, 현지 전문가와 연결·예약·결제·메시지까지 이어지는 프리미엄 플랫폼.
 
-> **현재 상태: 개발 진행 중 (Phase 1B 완료 — DB 기반: 스키마·migration·seed)**
+> **현재 상태: 개발 진행 중 (Phase 1C-1 완료 — 인증 코어 / Phase 1C 진행 중)**
 > 이 프로젝트의 목표 산출물은 **"production architecture를 갖춘 staging-ready MVP"** 입니다.
 > Mock Payment / Console Email / Local FS Storage 상태에서는 production launch 완료로
 > 간주하지 않으며, 실제 출시 조건은 아래 [출시 Gate](#출시-gate)를 따릅니다.
@@ -16,7 +16,9 @@
 - **next-intl** — 한국어(기본)·영어, `/en` prefix 방식 (`localePrefix: as-needed`)
 - **Zod** — 환경변수·입력 검증
 - **Prisma 7 + PostgreSQL 15+** — multi-file schema, pg driver adapter, 안전장치 있는 DB 스크립트
-- Auth.js v5, Vitest/Playwright — _이후 Phase에서 도입 예정_
+- **Auth.js v5 (JWT 세션)** — 이메일/비밀번호 Credentials, 이메일 인증·비밀번호 재설정(해시 저장
+  단일 사용 토큰), memory rate limit — Google/Kakao OAuth·계정 탈퇴는 Phase 1C-2 예정
+- **Vitest 4** — unit + DB 통합 테스트(`TEST_DATABASE_URL` 전용) / Playwright·CI — _Phase 1D 예정_
 
 ## 로컬 개발 실행
 
@@ -27,7 +29,9 @@ clean checkout 설치 순서:
 
 ```bash
 pnpm install
-cp .env.example .env.local   # DATABASE_URL 필수 — fallback 없음 (fail-closed)
+cp .env.example .env.local   # DATABASE_URL·AUTH_SECRET 필수 — fallback 없음 (fail-closed)
+# AUTH_SECRET을 직접 생성해 .env.local에 채운다 (저장소 커밋 금지):
+#   openssl rand -base64 32
 pnpm db:generate             # Prisma Client 생성 (src/generated/ — git 미추적)
 pnpm lint
 pnpm typecheck
@@ -38,9 +42,14 @@ createdb handalsalgi_dev && createdb handalsalgi_test   # 또는: docker compose
 pnpm db:deploy               # migration 적용 (dev)
 pnpm db:seed                 # 개발용 seed 데이터
 pnpm db:test:prepare         # 통합 테스트 DB에 migration만 적용 (seed 없음)
+pnpm test                    # unit + integration (integration은 TEST_DATABASE_URL 필수)
 
 pnpm dev                     # http://localhost:3000
 ```
+
+> 이메일 발송은 ConsoleEmailProvider가 대신한다: development에서는 인증/재설정 URL이
+> 서버 콘솔에 출력되고, production에서는 토큰·본문이 출력되지 않는다(마스킹된 수신자만).
+> 프록시 뒤 self-host production 배포는 `AUTH_TRUST_HOST=true`가 필요하다 (.env.example).
 
 ### DB 스크립트
 
@@ -81,6 +90,9 @@ pnpm lint          # ESLint
 pnpm typecheck     # tsc --noEmit
 pnpm build         # production build
 pnpm format:check  # Prettier 검사 (자동 수정: pnpm format)
+pnpm test          # Vitest 전체 (unit + integration)
+pnpm test:unit     # 순수 로직 unit 테스트 (DB 불필요)
+pnpm test:integration  # DB 통합 테스트 — TEST_DATABASE_URL 전용, dev DB 무접촉
 pnpm db:format     # Prisma schema 포맷
 pnpm db:validate   # Prisma schema 검증
 pnpm db:generate   # Prisma Client 생성
@@ -103,7 +115,12 @@ src/
 ├── components/        # layout/ + ui/ 공용 컴포넌트
 ├── i18n/              # next-intl 라우팅·요청 설정
 ├── messages/          # ko.json / en.json — UI 문자열 하드코딩 금지
+├── auth.ts            # Auth.js v5 구성 (JWT 전략, Credentials, 세션 재검증 callback)
+├── types/             # 모듈 타입 증강 (next-auth Session/JWT)
 └── proxy.ts           # locale 라우팅 proxy (Next.js 16)
+tests/
+├── unit/              # 순수 로직 테스트 (DB 불필요)
+└── integration/       # DB 통합 + 실세션 테스트 — TEST_DATABASE_URL 전용
 ```
 
 핵심 규칙:

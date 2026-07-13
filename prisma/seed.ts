@@ -1,6 +1,8 @@
 /**
  * 개발·스테이징 seed — idempotent (unique key 기준 upsert, 재실행 시 수렴).
- * 실행: pnpm db:seed  (또는 prisma migrate reset이 자동 실행 — Prisma 7)
+ * 실행: pnpm db:seed
+ * (Prisma 7.8 실측: `migrate reset`은 generate·seed를 자동 실행하지 않는다 —
+ *  dev 대상 reset 후 seed는 scripts/db-reset.ts가 명시적으로 실행한다)
  *
  * 주의:
  * - 이미지 URL은 개발용 placeholder(picsum), production 전 교체 필요 (README).
