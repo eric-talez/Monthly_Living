@@ -7,11 +7,14 @@ import { handlers } from '@/auth';
  * 넘기므로 NextRequest 없이 표준 Request로 충분하다 — 타입만 NextRequest를
  * 요구하므로 cast한다. 'next/server' 직접 import는 export map 부재로 Node에서 불가)
  */
-const BASE_URL = 'http://localhost:3000';
+export const BASE_URL = 'http://localhost:3000';
+
+/** OAuth 테스트는 fake network를 주입한 별도 인스턴스를 쓴다 — 각 helper의 기본값은 프로덕션 인스턴스 */
+export type AuthHandlers = typeof handlers;
 
 type HandlerRequest = Parameters<(typeof handlers)['GET']>[0];
 
-function asHandlerRequest(request: Request): HandlerRequest {
+export function asHandlerRequest(request: Request): HandlerRequest {
   return request as unknown as HandlerRequest;
 }
 
@@ -48,8 +51,11 @@ export class CookieJar {
 
 export const SESSION_COOKIE = 'authjs.session-token';
 
-async function fetchCsrfToken(jar: CookieJar): Promise<string> {
-  const response = await handlers.GET(
+export async function fetchCsrfToken(
+  jar: CookieJar,
+  auth: AuthHandlers = handlers,
+): Promise<string> {
+  const response = await auth.GET(
     asHandlerRequest(
       new Request(`${BASE_URL}/api/auth/csrf`, { headers: { cookie: jar.header() } }),
     ),
@@ -64,9 +70,10 @@ export async function signInWithCredentials(
   jar: CookieJar,
   email: string,
   password: string,
+  auth: AuthHandlers = handlers,
 ): Promise<Response> {
-  const csrfToken = await fetchCsrfToken(jar);
-  const response = await handlers.POST(
+  const csrfToken = await fetchCsrfToken(jar, auth);
+  const response = await auth.POST(
     asHandlerRequest(
       new Request(`${BASE_URL}/api/auth/callback/credentials`, {
         method: 'POST',
@@ -83,8 +90,11 @@ export async function signInWithCredentials(
 }
 
 /** 현재 쿠키로 session endpoint를 호출한다 — 무효화 시 세션 쿠키 제거까지 jar에 반영 */
-export async function fetchSession(jar: CookieJar): Promise<{ body: unknown; response: Response }> {
-  const response = await handlers.GET(
+export async function fetchSession(
+  jar: CookieJar,
+  auth: AuthHandlers = handlers,
+): Promise<{ body: unknown; response: Response }> {
+  const response = await auth.GET(
     asHandlerRequest(
       new Request(`${BASE_URL}/api/auth/session`, { headers: { cookie: jar.header() } }),
     ),

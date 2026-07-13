@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { OAuthButtons } from '@/components/auth/oauth-buttons';
 import { redirect } from '@/i18n/navigation';
 import { getSession } from '@/lib/session';
 
@@ -23,6 +24,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
       </h1>
       <p className="text-muted-foreground mt-2 text-sm">{t('register.description')}</p>
       <RegisterForm />
+      <OAuthButtons />
     </section>
   );
 }

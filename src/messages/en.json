@@ -64,10 +64,17 @@
       "description": "Log in with your email and password.",
       "submit": "Log in",
       "genericError": "The email or password is incorrect, or the email has not been verified.",
+      "oauthError": "We couldn't complete social sign-in. Please try again later or log in another way.",
       "resetSuccessNotice": "Your password has been reset. Please log in with your new password.",
       "registerPrompt": "Don't have an account yet?",
       "registerLink": "Sign up",
       "forgotPasswordLink": "Forgot your password?"
+    },
+    "oauth": {
+      "divider": "or",
+      "continueWithGoogle": "Continue with Google",
+      "continueWithKakao": "Continue with Kakao",
+      "consentNotice": "By continuing with social sign-in, you agree to the Terms of Service and Privacy Policy."
     },
     "register": {
       "title": "Sign up",

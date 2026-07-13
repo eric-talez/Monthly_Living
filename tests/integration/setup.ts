@@ -31,3 +31,12 @@ assertSafeLocalDbUrl('test', 'TEST_DATABASE_URL', testUrl);
 
 process.env.DATABASE_URL = testUrl;
 process.env.AUTH_SECRET ??= 'vitest-integration-only-fake-auth-secret-0123456789';
+
+// OAuth 통합 테스트용 가짜 credential — ??= 가 아니라 무조건 대입한다:
+// .env.local의 실제 credential이 테스트 기대값(fake network의 aud 검증 등)으로
+// 새어 들어오면 테스트가 환경 의존적이 된다. 실제 provider 네트워크는
+// helpers/oauth.ts의 fake fetch가 전부 대체하므로 이 값은 밖으로 나가지 않는다.
+process.env.AUTH_GOOGLE_ID = 'vitest-google-client-id';
+process.env.AUTH_GOOGLE_SECRET = 'vitest-google-client-secret';
+process.env.AUTH_KAKAO_ID = 'vitest-kakao-client-id';
+process.env.AUTH_KAKAO_SECRET = 'vitest-kakao-client-secret';
