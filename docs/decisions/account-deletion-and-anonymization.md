@@ -55,8 +55,14 @@ Path=<locale prefix>/settings/account/delete`.
   (유효/만료/차단 안내) — 이메일 스캐너가 링크를 열어도 토큰은 소비되지 않는다.
 - **실제 소비는 확인 화면의 POST server action에서만** 일어난다. token은 hidden
   input이 아니라 서버가 cookie에서 읽고, `sessionUserId`는 세션에서만 얻는다.
+  읽기는 현재 환경의 **정식 이름**(production `__Secure-account-deletion-token`,
+  dev/test `account-deletion-token`)만 token source로 인정한다 — alternate 이름은
+  토큰으로 쓰지 않는다.
 - cookie는 rate-limit을 제외한 모든 결과(성공/invalid/expired/blocked/error)
-  처리 후 제거된다. GET만 하고 떠난 경우 Max-Age(≤30분)로 소멸한다.
+  처리 후 일반·`__Secure-` **두 이름을 같은 locale Path에서 모두** 만료한다(일반
+  secure=false·`__Secure-` secure=true). **정식 cookie가 없어 진입한 경우에도**
+  `invalid`로 일반화하며 남은 stale cookie를 정리한다. GET만 하고 떠난 경우
+  Max-Age(≤30분)로 소멸한다.
 - 탈퇴 하위 화면 응답에는 `Cache-Control: no-store`,
   `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`를 부여한다.
 - 비로그인으로 링크를 열면 cookie를 유지한 채 localized login으로 보내고,

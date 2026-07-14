@@ -473,10 +473,10 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
 **검증 결과** (2026-07-13)
 
 - `pnpm db:generate/db:format/db:validate/format:check/lint/typecheck/test/build` 전부 통과.
-- 테스트 **289개 통과** (baseline 197 전부 회귀 통과 + 신규 92: unit 44 ·
-  integration 48). 실패 주입 4지점 전체 rollback·동일 토큰 동시 제출 1회 성공·
-  JWT 즉시 무효화·원 이메일 재가입(신규 id·과거 기록 비연결)·Google/Kakao 재로그인
-  신규 identity 포함.
+- 테스트 **301개 통과** (unit 170 · integration 131) — 1C-2A baseline 197 회귀 통과 +
+  계정 탈퇴 신규(보안 후속 반영 포함, 아래). 실패 주입 4지점 전체 rollback·동일 토큰
+  동시 제출 1회 성공·JWT 즉시 무효화·원 이메일 재가입(신규 id·과거 기록 비연결)·
+  Google/Kakao 재로그인 신규 identity 포함.
 - migration `20260713200248_add_account_deletion_token`: additive 4문만 포함
   (CREATE TABLE+PK, tokenHash unique, userId index, User FK CASCADE — DROP/기존
   변경 없음, unit 테스트로 회귀 고정), dev/test DB 적용·custom CHECK 60개 보존 확인.
@@ -484,6 +484,23 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
   로그인 복귀→GET 무소비(DB usedAt null)→DELETE 오타 오류(role=alert)→탈퇴→
   `/login?deleted=1`→tombstone DB 확인(PII null·이메일 치환·토큰 0)→EXPERT 미지원
   안내. production 모드 콘솔: 마스킹 수신자만 출력(token/URL/본문/전체 이메일 없음).
+
+**보안 후속 반영 (2026-07-14)**
+
+- **환경별 정식 cookie 이름**: 탈퇴 토큰 cookie를 production `__Secure-account-deletion-token`,
+  dev/test `account-deletion-token`으로 분리하고, confirm 화면·POST는 현재 환경의 정식
+  이름만 token source로 읽는다(production에서 일반 cookie를 토큰으로 쓰지 않음).
+- **malformed token stale-cookie 제거**: GET 교환에서 형식 불량 token은 cookie를 설정하지
+  않고 기존 일반·`__Secure-` cookie를 현재 locale Path에서 모두 만료한다.
+- **정식 cookie 부재 일반화**: confirm POST에서 현재 환경 정식 cookie가 없어도 `invalid`로
+  일반화하며, 남은 alternate/legacy cookie 두 이름을 같은 locale Path에서 만료한다(일반
+  secure=false·`__Secure-` secure=true). rate-limit 결과만 cookie를 유지한다.
+- **오류 로그 고정 문자열화**: 탈퇴 처리·이메일 발송 실패 로그를 고정 문구로 제한해
+  예외 message에 섞일 수 있는 token·이메일·URL이 새지 않게 했다.
+- 테스트 **301개 통과** (unit 170 · integration 131) — 신규 stale-cookie 회귀 3종
+  (production 일반-only·development `__Secure-`-only·cookie 전무; deps 접근 시 즉시
+  throw하는 fake로 DB·limiter·탈퇴 transaction 미호출 증명) 포함. schema/migration/
+  dependency 무변경.
 
 **다음 (1C-2B-2)**: 프로필 온보딩 & 역할별 redirect. 실 email provider 도입 시
 탈퇴 확인 메일 E2E 재검증 필요(출시 Gate).
