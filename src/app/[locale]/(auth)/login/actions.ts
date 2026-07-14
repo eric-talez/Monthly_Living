@@ -49,9 +49,12 @@ export async function loginAction(
     throw error;
   }
 
-  // 복귀 대상은 whitelist 키만 해석한다 — 임의 경로를 운반하지 않는다 (open redirect 방지)
+  // 복귀 대상은 whitelist 키만 해석한다 — 임의 경로를 운반하지 않는다 (open redirect 방지).
+  // 일반 로그인은 post-login dispatcher로 보내 역할·온보딩 상태에 맞는 목적지를 결정한다.
   const nextHref =
-    formData.get('next') === NEXT_DELETE_CONFIRM ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/';
+    formData.get('next') === NEXT_DELETE_CONFIRM
+      ? ACCOUNT_DELETION_CONFIRM_PATHNAME
+      : '/post-login';
   redirect({ href: nextHref, locale: await getLocale() });
   return null;
 }

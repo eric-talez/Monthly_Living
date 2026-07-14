@@ -45,6 +45,108 @@
     },
     "notice": "Fitness, yoga, golf, surfing, remote work, language learning, and wellness — we are building a service that connects you with local experts and programs that fit your goals."
   },
+  "onboarding": {
+    "common": {
+      "submitting": "Saving…",
+      "errorSummaryTitle": "Please check your input",
+      "unexpectedError": "A temporary error occurred. Please try again later.",
+      "optional": "optional"
+    },
+    "title": "Set up your profile",
+    "description": "Tell us a few basics and your travel preferences so we can handle bookings and recommendations. Fields marked * are required.",
+    "submit": "Save and continue",
+    "sections": {
+      "basic": "Basic info",
+      "region": "Region & preferences",
+      "interests": "Purposes & destinations",
+      "style": "Travel style",
+      "extra": "Additional info (optional)"
+    },
+    "fields": {
+      "fullName": "Full name",
+      "nickname": "Nickname",
+      "phone": "Phone",
+      "country": "Country of residence",
+      "timezone": "Time zone",
+      "uiLanguage": "Display language",
+      "currency": "Preferred currency",
+      "travelPurposes": "Travel purposes",
+      "preferredCountries": "Countries of interest",
+      "preferredCities": "Cities of interest",
+      "travelStyles": "Travel styles",
+      "spokenLanguages": "Languages you speak",
+      "budgetMin": "Monthly budget (min)",
+      "budgetMax": "Monthly budget (max)",
+      "groupSize": "Group size",
+      "hasChildren": "Traveling with children",
+      "hasPet": "Traveling with a pet",
+      "accessibilityNeeds": "Accessibility needs"
+    },
+    "hints": {
+      "destination": "Select at least one country or city of interest.",
+      "budget": "A rough monthly budget range (optional)."
+    },
+    "uiLanguage": { "ko": "한국어", "en": "English" },
+    "spokenLanguages": {
+      "ko": "Korean",
+      "en": "English",
+      "ja": "Japanese",
+      "zh": "Chinese",
+      "th": "Thai",
+      "vi": "Vietnamese"
+    },
+    "countries": {
+      "KR": "South Korea",
+      "US": "United States",
+      "CA": "Canada",
+      "TH": "Thailand",
+      "VN": "Vietnam"
+    },
+    "styles": {
+      "nature": "Nature",
+      "city": "City",
+      "beach": "Beach",
+      "culture": "Culture",
+      "food": "Food",
+      "wellness": "Wellness",
+      "adventure": "Adventure",
+      "quiet": "Quiet rest",
+      "social": "Social",
+      "budget": "Budget",
+      "luxury": "Luxury",
+      "remote-work": "Remote work",
+      "family": "Family",
+      "flexible": "Flexible"
+    },
+    "validation": {
+      "required": "This field is required.",
+      "fullNameTooLong": "Your name is too long.",
+      "countryInvalid": "Please select a supported country.",
+      "timezoneInvalid": "Please select a time zone for the chosen country.",
+      "localeInvalid": "Please select a supported display language.",
+      "currencyInvalid": "Please select a supported currency.",
+      "purposesRequired": "Select at least one travel purpose.",
+      "purposesTooMany": "You selected too many travel purposes.",
+      "purposeUnknown": "One or more selected purposes are not available.",
+      "destinationRequired": "Select at least one country or city of interest.",
+      "countriesTooMany": "You selected too many countries.",
+      "citiesTooMany": "You selected too many cities.",
+      "countryUnavailable": "One or more selected countries are not available.",
+      "cityUnavailable": "One or more selected cities are not available.",
+      "stylesRequired": "Select at least one travel style.",
+      "stylesTooMany": "You selected too many travel styles.",
+      "styleInvalid": "One or more selected styles are not available.",
+      "languagesTooMany": "You selected too many languages.",
+      "languageInvalid": "One or more selected languages are not available.",
+      "nicknameTooLong": "Your nickname is too long.",
+      "phoneInvalid": "The phone number format is invalid.",
+      "phoneTooLong": "The phone number is too long.",
+      "budgetInvalid": "Budget must be a number of 0 or more.",
+      "budgetRange": "The maximum budget must be greater than or equal to the minimum.",
+      "groupSizeInvalid": "The group size is invalid.",
+      "accessibilityTooLong": "Your request is too long."
+    }
+  },
   "notFound": {
     "title": "Page not found",
     "description": "The address may be incorrect, or the page may have been moved or deleted.",
