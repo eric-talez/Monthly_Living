@@ -7,6 +7,10 @@ import { signIn } from '@/auth';
 import { redirect } from '@/i18n/navigation';
 import { routing } from '@/i18n/routing';
 import { isOAuthProviderEnabled } from '@/modules/auth/oauth-providers';
+import {
+  ACCOUNT_DELETION_CONFIRM_PATHNAME,
+  NEXT_DELETE_CONFIRM,
+} from '@/modules/users/deletion-token-cookie';
 
 /**
  * OAuth 로그인 시작 — 얇은 어댑터. 실제 인가·계정 정책은 Auth.js callback →
@@ -17,7 +21,10 @@ import { isOAuthProviderEnabled } from '@/modules/auth/oauth-providers';
  * (modules/auth/oauth-request-context.ts). getPathname 대신 수동 prefix를
  * 쓰는 이유는 modules/auth/emails.ts의 기존 주석 참고.
  */
-export async function signInWithOAuthProvider(providerId: string): Promise<void> {
+export async function signInWithOAuthProvider(
+  providerId: string,
+  formData?: FormData,
+): Promise<void> {
   const requestLocale = await getLocale();
   const locale = hasLocale(routing.locales, requestLocale) ? requestLocale : routing.defaultLocale;
 
@@ -27,6 +34,15 @@ export async function signInWithOAuthProvider(providerId: string): Promise<void>
     return;
   }
 
-  const redirectTo = locale === routing.defaultLocale ? '/' : `/${locale}`;
+  // 복귀 대상은 whitelist 키만 해석한다 (open redirect 방지). locale prefix는 유지 —
+  // 이 경로가 신규 가입 preferredLanguage 판정의 근거이기도 하다.
+  const basePath =
+    formData?.get('next') === NEXT_DELETE_CONFIRM ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/';
+  const redirectTo =
+    locale === routing.defaultLocale
+      ? basePath
+      : basePath === '/'
+        ? `/${locale}`
+        : `/${locale}${basePath}`;
   await signIn(providerId, { redirectTo });
 }

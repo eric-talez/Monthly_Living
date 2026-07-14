@@ -6,23 +6,23 @@
 
 ## Phase 현황
 
-| Phase | 내용                                                                                      | 상태                   |
-| ----- | ----------------------------------------------------------------------------------------- | ---------------------- |
-| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃   | ✅ 완료 (2026-07-11)   |
-| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                         | ✅ 완료 (2026-07-11)   |
-| 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12)   |
-| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ✅ 완료 (2026-07-12)   |
-| 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit        | ✅ 완료 (2026-07-12)   |
-| 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI      | ✅ 완료 (2026-07-13)\* |
-| 1C-2B | Authentication 확장 잔여 — 계정 탈퇴(soft delete), 프로필 온보딩, 권한별 redirect         | ⬜ 미착수 (1C 진행 중) |
-| 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수              |
-| 2     | Public Marketplace                                                                        | ⬜ 미착수              |
-| 3     | Recommendation                                                                            | ⬜ 미착수              |
-| 4     | Expert Platform                                                                           | ⬜ 미착수              |
-| 5     | Booking & Payment                                                                         | ⬜ 미착수              |
-| 6     | Communication                                                                             | ⬜ 미착수              |
-| 7     | Admin                                                                                     | ⬜ 미착수              |
-| 8     | Quality & Deployment                                                                      | ⬜ 미착수              |
+| Phase | 내용                                                                                      | 상태                    |
+| ----- | ----------------------------------------------------------------------------------------- | ----------------------- |
+| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃   | ✅ 완료 (2026-07-11)    |
+| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                         | ✅ 완료 (2026-07-11)    |
+| 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12)    |
+| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ✅ 완료 (2026-07-12)    |
+| 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit        | ✅ 완료 (2026-07-12)    |
+| 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI      | ✅ 완료 (2026-07-13)\*  |
+| 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ⬜        | 🚧 진행 중 (1C 진행 중) |
+| 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수               |
+| 2     | Public Marketplace                                                                        | ⬜ 미착수               |
+| 3     | Recommendation                                                                            | ⬜ 미착수               |
+| 4     | Expert Platform                                                                           | ⬜ 미착수               |
+| 5     | Booking & Payment                                                                         | ⬜ 미착수               |
+| 6     | Communication                                                                             | ⬜ 미착수               |
+| 7     | Admin                                                                                     | ⬜ 미착수               |
+| 8     | Quality & Deployment                                                                      | ⬜ 미착수               |
 
 ## Phase 1A 기록 (2026-07-11)
 
@@ -432,6 +432,61 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
 - 오류 redirect가 항상 `/login`(ko 기본)으로 가 locale이 풀림 — pages 정적 문자열 제약(기존과 동일).
 - 향후 온보딩은 Auth.js isNewUser/trigger='signUp'에 의존하면 안 된다(최초 OAuth 로그인도
   내부적으로 isNewUser=false — 결정 문서).
+
+## Phase 1C-2B-1 기록 (2026-07-13) — Traveler Account Deletion
+
+**구현 내용** (상세: [결정 문서](docs/decisions/account-deletion-and-anonymization.md))
+
+- 여행자(TRAVELER) self-service 탈퇴 — **구조화 계정 PII 익명화 + User identity
+  tombstoning**. EXPERT/ADMIN은 fail-closed(일반화 안내, 메일·토큰 미생성).
+- 인증 모델: 로그인 세션 + 이메일 일회용 탈퇴 토큰(30분 TTL, DB에는 SHA-256 hash만,
+  `AccountDeletionToken` additive migration). "DELETE" 입력은 의사 확인용.
+- 토큰 URL 노출 최소화: proxy가 GET의 token 쿼리를 **HttpOnly cookie로 교환 후
+  쿼리 없는 URL로 303** (주소창·히스토리·Referer 비잔류, DB 무접촉 — 스캐너 안전).
+  소비는 confirm POST server action에서만. 탈퇴 하위 화면에 no-store/no-referrer/
+  noindex 헤더. 비로그인 열람은 whitelist 키(`next=delete-confirm`)로 로그인 복귀.
+- 단일 Prisma transaction: User `FOR UPDATE` → 재검증 → 토큰 원자적 소비
+  (`updateMany count===1`) → eligibility 재검사(실패 시 토큰 소비까지 전체 rollback)
+  → ephemeral 삭제 → Account·토큰 3종 삭제 → tombstone update(원 이메일 즉시 재사용).
+- 차단 정책: Booking 8종(DRAFT 포함)·Payment PENDING/PROCESSING·활성
+  Dispute/SupportTicket(본인 제기/작성 ∨ 본인 예약 연결)·ACTIVE quote+Booking 비정상·
+  TRAVELER의 ExpertProfile 보유. 미연결 ACTIVE quote는 tx에서 삭제,
+  EXPIRED/CONSUMED는 보존.
+- 삭제: Account·EV/PR/AD 토큰·LoginAttempt(원 이메일)·TravelerProfile·관심 목록·
+  Notification(+Delivery)·MatchRequest. 보존: ConsentRecord·Booking/Quote(역사)·
+  Payment·Review·Message·Support·Report·Dispute (tombstone id에 연결 유지).
+- UI: `/settings/account`(마스킹 이메일·위험 영역) → `/delete`(삭제/보존 안내+요청)
+  → `/delete/sent` → `/delete/confirm`(cookie 기반, DELETE 입력) →
+  `/delete/result?status=`(비민감 enum) / 성공 시 signOut 후 `/login?deleted=1`.
+  role="alert" 오류 요약·aria-invalid/aria-describedby·ko/en 메시지.
+- 재사용 인프라: replaceToken(union 확장·export)·limiterKey/enforceLimit/sendAuthEmail
+  export, AUTH_RATE_LIMITS 4종 추가(요청 user 3/1h·IP 10/1h, 확인 token 5/15m·IP 10/1h,
+  IP 우선), token-pattern 분리(crypto-free — proxy 번들), 탈퇴 메일 builder(ko/en).
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- EXPERT/ADMIN self-service 탈퇴, 유예 기간·복구, background 삭제 job,
+  메시지/티켓 등 자유 입력 본문 redaction(Phase 8), storage object 삭제,
+  온보딩·역할별 redirect(1C-2B-2), Redis/Resend, Playwright/CI, DB reset.
+- 전체 개인정보의 완전한 익명화·법적 삭제 의무 이행 완료를 주장하지 않음(결정 문서).
+
+**검증 결과** (2026-07-13)
+
+- `pnpm db:generate/db:format/db:validate/format:check/lint/typecheck/test/build` 전부 통과.
+- 테스트 **289개 통과** (baseline 197 전부 회귀 통과 + 신규 92: unit 44 ·
+  integration 48). 실패 주입 4지점 전체 rollback·동일 토큰 동시 제출 1회 성공·
+  JWT 즉시 무효화·원 이메일 재가입(신규 id·과거 기록 비연결)·Google/Kakao 재로그인
+  신규 identity 포함.
+- migration `20260713200248_add_account_deletion_token`: additive 4문만 포함
+  (CREATE TABLE+PK, tokenHash unique, userId index, User FK CASCADE — DROP/기존
+  변경 없음, unit 테스트로 회귀 고정), dev/test DB 적용·custom CHECK 60개 보존 확인.
+- dev 수동 검증: 가입→인증→요청→메일 링크→**주소창 token 제거(303 교환)**→비로그인
+  로그인 복귀→GET 무소비(DB usedAt null)→DELETE 오타 오류(role=alert)→탈퇴→
+  `/login?deleted=1`→tombstone DB 확인(PII null·이메일 치환·토큰 0)→EXPERT 미지원
+  안내. production 모드 콘솔: 마스킹 수신자만 출력(token/URL/본문/전체 이메일 없음).
+
+**다음 (1C-2B-2)**: 프로필 온보딩 & 역할별 redirect. 실 email provider 도입 시
+탈퇴 확인 메일 E2E 재검증 필요(출시 Gate).
 
 ## 알려진 문제
 

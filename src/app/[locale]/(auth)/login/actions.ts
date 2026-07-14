@@ -8,6 +8,10 @@ import { redirect } from '@/i18n/navigation';
 import { apiFail, type ApiFailure } from '@/lib/api-response';
 import { ERROR_CODES } from '@/lib/errors';
 import { loginSchema } from '@/modules/auth/validation';
+import {
+  ACCOUNT_DELETION_CONFIRM_PATHNAME,
+  NEXT_DELETE_CONFIRM,
+} from '@/modules/users/deletion-token-cookie';
 
 export type LoginActionState = ApiFailure | null;
 
@@ -45,6 +49,9 @@ export async function loginAction(
     throw error;
   }
 
-  redirect({ href: '/', locale: await getLocale() });
+  // 복귀 대상은 whitelist 키만 해석한다 — 임의 경로를 운반하지 않는다 (open redirect 방지)
+  const nextHref =
+    formData.get('next') === NEXT_DELETE_CONFIRM ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/';
+  redirect({ href: nextHref, locale: await getLocale() });
   return null;
 }

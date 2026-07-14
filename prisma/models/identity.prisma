@@ -32,6 +32,7 @@ model User {
   consents                ConsentRecord[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
+  accountDeletionTokens   AccountDeletionToken[]
   travelerProfile         TravelerProfile?
   expertProfile           ExpertProfile?
   credentialReviews       ExpertCredential[]       @relation("CredentialReviewer")
@@ -99,6 +100,21 @@ model EmailVerificationToken {
 }
 
 model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// 계정 탈퇴 확인 토큰 (TTL 30분, 단일 사용) — 토큰 원문은 저장하지 않고 해시만 저장한다.
+// 소비는 modules/users 탈퇴 transaction 안에서만 수행한다.
+model AccountDeletionToken {
   id        String    @id @default(cuid())
   userId    String
   tokenHash String    @unique

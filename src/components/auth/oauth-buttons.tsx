@@ -16,7 +16,7 @@ const BUTTON_LABEL_KEYS: Record<OAuthProviderId, string> = {
  * 그리지 않는다. 신규 가입 동의 고지는 버튼과 함께 항상 표시한다
  * (ConsentRecord 기록 근거 — docs/decisions/oauth-account-linking.md).
  */
-export async function OAuthButtons() {
+export async function OAuthButtons({ next = null }: { next?: string | null }) {
   const providerIds = getEnabledOAuthProviderIds();
   if (providerIds.length === 0) {
     return null;
@@ -35,6 +35,8 @@ export async function OAuthButtons() {
       <div className="space-y-3">
         {providerIds.map((providerId) => (
           <form key={providerId} action={signInWithOAuthProvider.bind(null, providerId)}>
+            {/* 로그인 복귀 whitelist 키 — 서버 액션이 검증 후 해석한다 */}
+            {next ? <input type="hidden" name="next" value={next} /> : null}
             <button
               type="submit"
               className="border-border hover:bg-muted w-full border px-6 py-3 text-sm font-medium transition-colors focus-visible:outline-2"

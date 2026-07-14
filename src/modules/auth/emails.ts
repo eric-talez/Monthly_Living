@@ -50,3 +50,15 @@ export function buildPasswordResetEmail(params: {
   const url = absoluteAuthUrl(locale, '/reset-password', params.rawToken);
   return { to: params.to, subject: template.subject, text: template.body.replace('{url}', url) };
 }
+
+/** 계정 탈퇴 확인 메일 — 링크의 token 쿼리는 proxy에서 HttpOnly cookie로 교환된다. */
+export function buildAccountDeletionEmail(params: {
+  to: string;
+  preferredLanguage: string;
+  rawToken: string;
+}): EmailMessage {
+  const locale = resolveLocale(params.preferredLanguage);
+  const template = EMAIL_MESSAGES[locale].accountDeletion;
+  const url = absoluteAuthUrl(locale, '/settings/account/delete/confirm', params.rawToken);
+  return { to: params.to, subject: template.subject, text: template.body.replace('{url}', url) };
+}

@@ -20,6 +20,7 @@ export const BCRYPT_COST = 12;
 
 export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24시간
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30분
+export const ACCOUNT_DELETION_TOKEN_TTL_MS = 30 * 60 * 1000; // 30분
 
 /** 회원가입 시 기록하는 약관·개인정보 버전 — seed의 termsVersion과 일치 */
 export const CONSENT_TERMS_VERSION = '2026-07-01';
@@ -40,6 +41,12 @@ export const AUTH_RATE_LIMITS = {
   // token 키는 raw token이 아니라 sha256 hash를 HMAC 처리해 사용한다.
   resetPasswordByIp: { max: 10, windowMs: 60 * 60 * 1000 },
   resetPasswordByToken: { max: 5, windowMs: 15 * 60 * 1000 },
+  // 계정 탈퇴 — 요청은 userId(HMAC)·IP 키, 확인(토큰 소비)은 token hash(HMAC)·IP 키.
+  // 복합 소비 순서는 다른 흐름과 동일하게 IP 우선 (modules/users/account-deletion.ts).
+  deletionRequestByUser: { max: 3, windowMs: 60 * 60 * 1000 },
+  deletionRequestByIp: { max: 10, windowMs: 60 * 60 * 1000 },
+  deletionConfirmByToken: { max: 5, windowMs: 15 * 60 * 1000 },
+  deletionConfirmByIp: { max: 10, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type AuthRateLimitName = keyof typeof AUTH_RATE_LIMITS;

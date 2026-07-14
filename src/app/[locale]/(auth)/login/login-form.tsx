@@ -12,7 +12,7 @@ import { loginAction, type LoginActionState } from './actions';
 const inputClassName =
   'border-border bg-background w-full border px-3 py-2 text-sm focus-visible:outline-2';
 
-export function LoginForm() {
+export function LoginForm({ next = null }: { next?: string | null }) {
   const t = useTranslations('auth');
   const [state, formAction, pending] = useActionState<LoginActionState, FormData>(
     loginAction,
@@ -23,6 +23,8 @@ export function LoginForm() {
 
   return (
     <form action={formAction} noValidate className="mt-8 space-y-5">
+      {/* 로그인 복귀 whitelist 키 — 서버 액션이 검증 후 해석한다 */}
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <ErrorSummary
         title={t('common.errorSummaryTitle')}
         messages={errorMessage ? [errorMessage] : []}
