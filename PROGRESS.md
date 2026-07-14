@@ -6,23 +6,23 @@
 
 ## Phase 현황
 
-| Phase | 내용                                                                                      | 상태                    |
-| ----- | ----------------------------------------------------------------------------------------- | ----------------------- |
-| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃   | ✅ 완료 (2026-07-11)    |
-| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                         | ✅ 완료 (2026-07-11)    |
-| 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드 | ✅ 완료 (2026-07-12)    |
-| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                   | ✅ 완료 (2026-07-12)    |
-| 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit        | ✅ 완료 (2026-07-12)    |
-| 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI      | ✅ 완료 (2026-07-13)\*  |
-| 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ⬜        | 🚧 진행 중 (1C 진행 중) |
-| 1D    | Verification — Phase 1 통합 점검, CI                                                      | ⬜ 미착수               |
-| 2     | Public Marketplace                                                                        | ⬜ 미착수               |
-| 3     | Recommendation                                                                            | ⬜ 미착수               |
-| 4     | Expert Platform                                                                           | ⬜ 미착수               |
-| 5     | Booking & Payment                                                                         | ⬜ 미착수               |
-| 6     | Communication                                                                             | ⬜ 미착수               |
-| 7     | Admin                                                                                     | ⬜ 미착수               |
-| 8     | Quality & Deployment                                                                      | ⬜ 미착수               |
+| Phase | 내용                                                                                        | 상태                   |
+| ----- | ------------------------------------------------------------------------------------------- | ---------------------- |
+| 1A    | Repository Foundation — scaffold, 디자인 토큰, i18n, env 검증, 공통 에러/응답, 레이아웃     | ✅ 완료 (2026-07-11)   |
+| 1B-1  | Schema Contract — Prisma 7 도입, 전체 스키마 계약, 설계 결정 문서                           | ✅ 완료 (2026-07-11)   |
+| 1B-2A | Migration SQL Draft — create-only draft + custom SQL(CHECK 등), 빈 DB, docker, reset 가드   | ✅ 완료 (2026-07-12)   |
+| 1B-2B | Apply, Seed, Reset Verification — migration 적용, seed, reset 왕복 검증                     | ✅ 완료 (2026-07-12)   |
+| 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit          | ✅ 완료 (2026-07-12)   |
+| 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
+| 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
+| 1D    | Verification — Phase 1 통합 점검, CI                                                        | ⬜ 미착수              |
+| 2     | Public Marketplace                                                                          | ⬜ 미착수              |
+| 3     | Recommendation                                                                              | ⬜ 미착수              |
+| 4     | Expert Platform                                                                             | ⬜ 미착수              |
+| 5     | Booking & Payment                                                                           | ⬜ 미착수              |
+| 6     | Communication                                                                               | ⬜ 미착수              |
+| 7     | Admin                                                                                       | ⬜ 미착수              |
+| 8     | Quality & Deployment                                                                        | ⬜ 미착수              |
 
 ## Phase 1A 기록 (2026-07-11)
 
@@ -504,6 +504,60 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
 
 **다음 (1C-2B-2)**: 프로필 온보딩 & 역할별 redirect. 실 email provider 도입 시
 탈퇴 확인 메일 E2E 재검증 필요(출시 Gate).
+
+## Phase 1C-2B-2 기록 (2026-07-14) — 프로필 온보딩 & 역할별 redirect
+
+**구현 내용**
+
+- **Post-login dispatcher** `/[locale]/post-login` (UI 없는 server 라우트): 세션 userId로
+  DB 상태를 조회해 목적지를 결정한다. Credentials·OAuth 로그인 성공, 이미 로그인한
+  `/login`·`/register` 접근이 모두 이 dispatcher를 경유한다. OAuth 최초 로그인은
+  `isNewUser=false`이므로 **DB 상태**로만 판정한다(신규 여부 신호 미사용).
+- **단일 소스 판정·resolver** (`modules/onboarding/`): `isTravelerOnboardingComplete`
+  (완료 판정)·`resolvePostLoginDestination`(목적지 union `/onboarding`·`/`·`/login`) 순수
+  함수. dispatcher·onboarding gate·저장 후 재판정·테스트가 모두 재사용(조건 복제 없음).
+  별도 완료 컬럼 없이 기존 필드로 판정 → **schema 무변경**.
+- **완료 계약(핵심 5종)**: `fullName` 존재 · `country`가 지원국 · `TravelerProfile` row 존재 ·
+  `travelPurposes≥1` · (`preferredCountries|preferredCities`)≥1 · `travelStyles≥1`.
+  seed traveler=완료, 신규 Credentials/OAuth traveler=미완료로 자연 분리.
+- **온보딩 라우트** `/[locale]/onboarding`: 단일 화면(5 section)·partial save 없음. gate가
+  동일 resolver로 비로그인→`/login`, 완료 traveler·EXPERT·ADMIN→`/`, 미완료 traveler만
+  폼 렌더. 완료 후 재진입은 기본 경로로(편집 화면은 후속 범위).
+- **저장 service** `completeTravelerOnboarding`: `SELECT … FOR UPDATE`로 동일 사용자 동시
+  submit 직렬화 → ACTIVE TRAVELER 재검증 → active Category/Destination slug 검증 →
+  `User.update` + `TravelerProfile.upsert`를 **단일 트랜잭션**으로. userId는 세션에서만
+  (타 사용자 수정 불가), 실패는 전체 rollback, 오류 로그는 고정 문구(입력 body 미기록).
+- **검증**(`onboarding/validation.ts`, Zod): fullName trim·길이, country/timezone 교차
+  화이트리스트(curated: KR/US/CA/TH/VN + 국가별 IANA), locale=`routing.locales`,
+  currency=Prisma `Currency`, 배열 최소/최대/중복제거, budget 0↑·min≤max, groupSize 범위.
+  slug 존재는 service(DB), 나머지는 순수 스키마. UI 검증은 편의·server가 최종 권위.
+- 진입점 수정: `login/actions.ts`·`oauth-actions.ts`·`login/page.tsx`·`register/page.tsx`의
+  일반 목적지를 `/` → `/post-login`으로. **`delete-confirm` whitelist·`?deleted=1`
+  흐름은 그대로 유지**(post-login 우회). i18n `onboarding.*`(ko/en) 추가.
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- schema/migration/새 컬럼·enum 추가 없음. multi-step·partial save·draft 상태 없음.
+- EXPERT 온보딩·검증, expert/admin·traveler 대시보드 등 빈 라우트 대량 생성 없음
+  (완료 traveler·EXPERT·ADMIN은 현재 안전한 기본 경로 `/`로; dashboard는 resolver 반환값만
+  교체하면 됨). 온보딩 후 프로필 편집 UI는 후속 범위.
+- 광범위 ISO-3166/IANA 화이트리스트 대신 curated + active Destination 검증.
+- 페이지-렌더 테스트 하베스(RTL)·Playwright·CI 없음.
+
+**검증 결과** (2026-07-14)
+
+- `pnpm db:generate/db:format/db:validate/format:check/lint/typecheck/test/build` 전부 통과.
+- 테스트 **357개 통과** (unit 211 · integration 146) — 1C-2B-1 baseline 301 회귀 통과 +
+  신규 56(unit 41: 완료 판정 matrix·resolver matrix·validation 경계 / integration 15:
+  신규 Credentials·Google·Kakao traveler→ONBOARDING·seed 완료·저장·트랜잭션 rollback·
+  concurrent submit·EXPERT/ADMIN·SUSPENDED/DELETED fail-closed·타 사용자 수정 불가).
+  schema/migration/dependency 무변경.
+- dev 수동 E2E: 비로그인 `/onboarding`·`/post-login`→`/login` · EXPERT 로그인→`/`·onboarding
+  차단 · 신규 가입→인증→로그인→**`/onboarding`**(옵션 DB 도출: 15 목적·9 도시·14 스타일,
+  KR→Asia/Seoul 교차) → 저장→`/post-login`→홈(로그인 유지) → DB에 User·TravelerProfile
+  영속 → 완료 traveler 재진입 `/onboarding`→홈.
+
+**다음**: 실 email provider·대시보드 도입 시 resolver 목적지 교체.
 
 ## 알려진 문제
 
