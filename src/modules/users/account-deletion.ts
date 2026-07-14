@@ -309,7 +309,8 @@ export type ConfirmDeletionCoreOutcome =
  * cookie에서 토큰을 읽어(환경별 정식 이름) 탈퇴를 수행하고, rate-limit을 제외한
  * 모든 결과에서 cookie를 제거한다 (성공·invalid·expired·blocked·error — 일반·
  * __Secure- 이름 모두 만료). rate-limit은 사용자가 잠시 후 같은 링크로 재시도할
- * 수 있어야 하므로 cookie를 유지한다. cookie 부재는 'invalid' 결과로 일반화한다.
+ * 수 있어야 하므로 cookie를 유지한다. cookie 부재도 두 이름을 만료시킨 뒤 'invalid'로
+ * 일반화한다(정식 cookie 없이 남은 stale cookie 정리).
  */
 export async function confirmDeletionCore(
   params: {
@@ -328,6 +329,7 @@ export async function confirmDeletionCore(
   };
 
   if (!rawToken) {
+    clearCookies();
     return { kind: 'result', status: 'invalid' };
   }
 

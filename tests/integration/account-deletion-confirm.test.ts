@@ -614,6 +614,16 @@ describe('confirmDeletionCore — cookie 수명·로그 비민감화', () => {
     }
   }
 
+  /** 어떤 속성이든 접근하면 throw — 토큰 cookie 부재 분기가 db·limiter·transaction을
+   *  건드리지 않음을 증명한다(접근 즉시 실패). */
+  function poisonedDeps(): TestDeps['deps'] {
+    return new Proxy({} as TestDeps['deps'], {
+      get(_target, prop) {
+        throw new Error(`토큰 cookie가 없을 때 deps.${String(prop)}에 접근하면 안 된다`);
+      },
+    });
+  }
+
   it('성공 시 탈퇴 후 두 이름의 cookie를 모두 제거한다', async () => {
     const testDeps = createTestDeps();
     const traveler = await createDeletionTraveler('core-success', { testDeps });
@@ -790,21 +800,65 @@ describe('confirmDeletionCore — cookie 수명·로그 비민감화', () => {
     expect(deletions).toHaveLength(0);
   });
 
-  it("cookie가 없으면 'invalid' 결과로 일반화한다", async () => {
-    const testDeps = createTestDeps();
-    const traveler = await createDeletionTraveler('core-missing', { testDeps });
-    const { store } = fakeCookieStore();
+  it('production: 정식(__Secure-) cookie 부재 시 stale 일반 cookie까지 만료하고 invalid로 수렴한다', async () => {
+    // production 정식 이름(__Secure-)은 없고 일반 이름에만 stale 값이 남은 상태
+    const { store, jar, deletions } = fakeCookieStore(generateRawToken());
 
     const outcome = await confirmDeletionCore(
       {
-        sessionUserId: traveler.id,
+        sessionUserId: 'nobody',
+        ipAddress: TEST_IP,
+        cookieStore: store,
+        cookiePath: COOKIE_PATH,
+        isProduction: true,
+      },
+      poisonedDeps(),
+    );
+
+    expect(outcome).toEqual({ kind: 'result', status: 'invalid' });
+    expect(jar.has(DEV_COOKIE)).toBe(false); // stale 일반 cookie도 만료됐다
+    expectBothNamesCleared(deletions); // 두 이름·Path·이름별 secure(일반 false/__Secure- true)
+  });
+
+  it('development: 정식(일반) cookie 부재 시 stale __Secure- cookie까지 만료하고 invalid로 수렴한다', async () => {
+    const SECURE_COOKIE = deletionTokenCookieName(true);
+    const { store, jar, deletions } = fakeCookieStore();
+    jar.set(SECURE_COOKIE, generateRawToken()); // __Secure- 이름에만 stale 값
+
+    const outcome = await confirmDeletionCore(
+      {
+        sessionUserId: 'nobody',
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
         isProduction: false,
       },
-      testDeps.deps,
+      poisonedDeps(),
     );
+
+    // alternate __Secure- 값을 토큰으로 쓰지 않는다 — 썼다면 poisonedDeps 접근으로 throw됐을 것
     expect(outcome).toEqual({ kind: 'result', status: 'invalid' });
+    expect(jar.has(SECURE_COOKIE)).toBe(false); // stale __Secure- cookie도 만료됐다
+    expect(jar.has(DEV_COOKIE)).toBe(false);
+    expectBothNamesCleared(deletions);
+  });
+
+  it("cookie가 전혀 없으면 두 이름을 만료시킨 뒤 'invalid'로 일반화한다 (서비스 미호출)", async () => {
+    const { store, jar, deletions } = fakeCookieStore();
+
+    const outcome = await confirmDeletionCore(
+      {
+        sessionUserId: 'nobody',
+        ipAddress: TEST_IP,
+        cookieStore: store,
+        cookiePath: COOKIE_PATH,
+        isProduction: false,
+      },
+      poisonedDeps(),
+    );
+
+    expect(outcome).toEqual({ kind: 'result', status: 'invalid' });
+    expect(jar.size).toBe(0);
+    expectBothNamesCleared(deletions);
   });
 });
