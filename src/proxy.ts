@@ -26,8 +26,13 @@ export default function proxy(request: NextRequest) {
     cleanUrl.pathname = exchange.redirectPathname;
     cleanUrl.search = '';
     const response = NextResponse.redirect(cleanUrl, exchange.status);
-    if (exchange.cookie) {
-      response.cookies.set(exchange.cookie);
+    if (exchange.cookieToSet) {
+      response.cookies.set(exchange.cookieToSet);
+    }
+    // malformed token — 기존(일반·__Secure-) cookie를 같은 Path에서 만료해
+    // 이전 token이 clean confirm 화면에서 재사용되지 않게 한다
+    for (const clearSpec of exchange.cookiesToClear) {
+      response.cookies.set(clearSpec);
     }
     for (const [name, value] of Object.entries(exchange.headers)) {
       response.headers.set(name, value);

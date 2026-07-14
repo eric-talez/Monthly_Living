@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { ERROR_CODES } from '@/lib/errors';
 import { generateRawToken, hashToken } from '@/modules/auth/tokens';
@@ -16,7 +16,10 @@ import {
   tombstoneEmailFor,
   type DeletionCookieStore,
 } from '@/modules/users/account-deletion';
-import { ACCOUNT_DELETION_TOKEN_COOKIE } from '@/modules/users/deletion-token-cookie';
+import {
+  deletionTokenCookieName,
+  type DeletionCookieClearSpec,
+} from '@/modules/users/deletion-token-cookie';
 
 import { cleanupOwnData, disconnect, testEmail, testPrisma } from './helpers/db';
 import { createTestDeps, extractTokenFromEmail, type TestDeps } from './helpers/deps';
@@ -574,21 +577,24 @@ describe('deleteAndAnonymizeTravelerAccount — rate limit·형식 검증 순서
   });
 });
 
-describe('confirmDeletionCore — cookie 수명', () => {
+describe('confirmDeletionCore — cookie 수명·로그 비민감화', () => {
+  const DEV_COOKIE = deletionTokenCookieName(false);
+
+  /** name → value 맵 기반 fake store — clear spec(두 이름 만료)까지 기록한다 */
   function fakeCookieStore(initialToken?: string) {
     const jar = new Map<string, string>();
     if (initialToken !== undefined) {
-      jar.set(ACCOUNT_DELETION_TOKEN_COOKIE, initialToken);
+      jar.set(DEV_COOKIE, initialToken);
     }
-    const deletions: Array<{ name: string; path: string }> = [];
+    const deletions: DeletionCookieClearSpec[] = [];
     const store: DeletionCookieStore = {
       get: (name) => {
         const value = jar.get(name);
         return value === undefined ? undefined : { value };
       },
-      delete: (options) => {
-        deletions.push(options);
-        jar.delete(options.name);
+      delete: (spec) => {
+        deletions.push(spec);
+        jar.delete(spec.name);
       },
     };
     return { store, jar, deletions };
@@ -596,7 +602,19 @@ describe('confirmDeletionCore — cookie 수명', () => {
 
   const COOKIE_PATH = '/settings/account/delete';
 
-  it('성공 시 탈퇴 후 cookie를 제거한다', async () => {
+  /** clear가 일반·__Secure- 이름을 모두 같은 Path에서 Max-Age=0으로 만료했는지 검증 */
+  function expectBothNamesCleared(deletions: DeletionCookieClearSpec[]) {
+    expect(deletions.map((spec) => spec.name).sort()).toEqual(
+      ['__Secure-account-deletion-token', 'account-deletion-token'].sort(),
+    );
+    for (const spec of deletions) {
+      expect(spec.maxAge).toBe(0);
+      expect(spec.path).toBe(COOKIE_PATH);
+      expect(spec.secure).toBe(spec.name.startsWith('__Secure-'));
+    }
+  }
+
+  it('성공 시 탈퇴 후 두 이름의 cookie를 모두 제거한다', async () => {
     const testDeps = createTestDeps();
     const traveler = await createDeletionTraveler('core-success', { testDeps });
     const rawToken = await issueDeletionToken(traveler.id, testDeps);
@@ -608,13 +626,36 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );
 
     expect(outcome).toEqual({ kind: 'deleted' });
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(false);
-    expect(deletions).toEqual([{ name: ACCOUNT_DELETION_TOKEN_COOKIE, path: COOKIE_PATH }]);
+    expect(jar.has(DEV_COOKIE)).toBe(false);
+    expectBothNamesCleared(deletions);
+  });
+
+  it('production read는 __Secure- cookie를 사용한다 (일반 cookie는 무시)', async () => {
+    const testDeps = createTestDeps();
+    const traveler = await createDeletionTraveler('core-prod-read', { testDeps });
+    const rawToken = await issueDeletionToken(traveler.id, testDeps);
+    const { store, jar } = fakeCookieStore();
+    jar.set(deletionTokenCookieName(true), rawToken);
+    // 일반 이름에는 무효 값 — production read가 이것을 쓰면 invalid가 된다
+    jar.set(DEV_COOKIE, generateRawToken());
+
+    const outcome = await confirmDeletionCore(
+      {
+        sessionUserId: traveler.id,
+        ipAddress: TEST_IP,
+        cookieStore: store,
+        cookiePath: COOKIE_PATH,
+        isProduction: true,
+      },
+      testDeps.deps,
+    );
+    expect(outcome).toEqual({ kind: 'deleted' });
   });
 
   it('invalid(미발급 토큰) 결과에서도 cookie를 제거한다', async () => {
@@ -628,12 +669,13 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );
 
     expect(outcome).toEqual({ kind: 'result', status: 'invalid' });
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(false);
+    expect(jar.has(DEV_COOKIE)).toBe(false);
   });
 
   it('expired 결과에서도 cookie를 제거한다', async () => {
@@ -652,11 +694,12 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );
     expect(outcome).toEqual({ kind: 'result', status: 'expired' });
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(false);
+    expect(jar.has(DEV_COOKIE)).toBe(false);
   });
 
   it('blocked 결과에서도 cookie를 제거한다', async () => {
@@ -672,31 +715,57 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );
     expect(outcome).toEqual({ kind: 'result', status: 'blocked' });
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(false);
+    expect(jar.has(DEV_COOKIE)).toBe(false);
   });
 
-  it('내부 오류(error) 결과에서도 cookie를 제거한다', async () => {
+  it('내부 오류(error): cookie 제거 + 고정 문구만 기록 — token·이메일·URL 비노출', async () => {
     const testDeps = createTestDeps();
     const traveler = await createDeletionTraveler('core-error', { testDeps });
     const rawToken = await issueDeletionToken(traveler.id, testDeps);
-    const { store, jar } = fakeCookieStore(rawToken);
+    const { store, jar, deletions } = fakeCookieStore(rawToken);
 
-    const outcome = await confirmDeletionCore(
-      {
-        sessionUserId: traveler.id,
-        ipAddress: TEST_IP,
-        cookieStore: store,
-        cookiePath: COOKIE_PATH,
-      },
-      testDeps.deps,
-      { afterTokenConsume: () => Promise.reject(new Error('injected-core-failure')) },
-    );
-    expect(outcome).toEqual({ kind: 'result', status: 'error' });
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(false);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // 최악의 경우: 주입 오류 메시지에 raw token·이메일·confirm URL이 전부 포함
+      const hostileError = new Error(
+        `boom to=${traveler.email} token=${rawToken} url=https://x/settings/account/delete/confirm?token=${rawToken}`,
+      );
+      const outcome = await confirmDeletionCore(
+        {
+          sessionUserId: traveler.id,
+          ipAddress: TEST_IP,
+          cookieStore: store,
+          cookiePath: COOKIE_PATH,
+          isProduction: false,
+        },
+        testDeps.deps,
+        { afterTokenConsume: () => Promise.reject(hostileError) },
+      );
+      expect(outcome).toEqual({ kind: 'result', status: 'error' });
+      expect(jar.has(DEV_COOKIE)).toBe(false);
+      expectBothNamesCleared(deletions);
+
+      const output = errorSpy.mock.calls
+        .flat()
+        .map((value) =>
+          value instanceof Error ? `${value.message}\n${value.stack}` : String(value),
+        )
+        .join('\n');
+      expect(output).not.toContain(rawToken);
+      expect(output).not.toContain(traveler.email);
+      expect(output).not.toContain('token=');
+      expect(output).not.toContain('/settings/account/delete/confirm');
+      expect(output).not.toContain('boom');
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith('[users] 계정 탈퇴 처리 실패');
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('rate limit에서는 cookie를 유지한다 — 잠시 후 같은 링크로 재시도 가능', async () => {
@@ -704,7 +773,7 @@ describe('confirmDeletionCore — cookie 수명', () => {
     const traveler = await createDeletionTraveler('core-ratelimit', { testDeps });
     // IP 한도(1)를 미리 소진해 다음 confirm이 RATE_LIMITED가 되게 한다
     await testDeps.deps.rateLimiters.deletionConfirmByIp.limit(limiterKey(TEST_IP));
-    const { store, jar } = fakeCookieStore(generateRawToken());
+    const { store, jar, deletions } = fakeCookieStore(generateRawToken());
 
     const outcome = await confirmDeletionCore(
       {
@@ -712,11 +781,13 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );
     expect(outcome.kind).toBe('rate-limited');
-    expect(jar.has(ACCOUNT_DELETION_TOKEN_COOKIE)).toBe(true);
+    expect(jar.has(DEV_COOKIE)).toBe(true);
+    expect(deletions).toHaveLength(0);
   });
 
   it("cookie가 없으면 'invalid' 결과로 일반화한다", async () => {
@@ -730,6 +801,7 @@ describe('confirmDeletionCore — cookie 수명', () => {
         ipAddress: TEST_IP,
         cookieStore: store,
         cookiePath: COOKIE_PATH,
+        isProduction: false,
       },
       testDeps.deps,
     );

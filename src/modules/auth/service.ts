@@ -473,17 +473,18 @@ export async function resetPassword(
   return 'invalid';
 }
 
-/** 메일 발송 실패는 흐름을 깨지 않는다 — 재전송 경로가 있으므로 기록만 남긴다 (본문·토큰 미포함) */
+/**
+ * 메일 발송 실패는 흐름을 깨지 않는다 — 재전송 경로가 있으므로 기록만 남긴다.
+ * 고정 문자열만 출력한다: provider 오류 객체·message에는 수신자 이메일·확인 URL·
+ * raw token이 섞여 들어올 수 있으므로 어떤 환경에서도 기록하지 않는다.
+ */
 export async function sendAuthEmail(
   deps: AuthServiceDeps,
   message: Parameters<AuthServiceDeps['emailProvider']['send']>[0],
 ): Promise<void> {
   try {
     await deps.emailProvider.send(message);
-  } catch (error) {
-    console.error(
-      '[auth] 이메일 발송 실패 (본문 미기록)',
-      error instanceof Error ? error.message : error,
-    );
+  } catch {
+    console.error('[auth] 이메일 발송 실패');
   }
 }

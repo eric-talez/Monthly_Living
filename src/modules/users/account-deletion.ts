@@ -13,7 +13,12 @@ import {
 import { hashToken, isWellFormedAuthToken } from '@/modules/auth/tokens';
 import { ERROR_CODES, isAppError } from '@/lib/errors';
 
-import { ACCOUNT_DELETION_TOKEN_COOKIE } from './deletion-token-cookie';
+import {
+  clearDeletionTokenCookies,
+  readDeletionTokenCookie,
+  type DeletionCookieClearSpec,
+  type DeletionCookieReadStore,
+} from './deletion-token-cookie';
 import { classifyDeletionEligibility, loadDeletionObligations } from './eligibility';
 
 /**
@@ -291,9 +296,8 @@ export async function deleteAndAnonymizeTravelerAccount(
 // ── confirm POST 코어 — server action에서 cookie·세션만 배선하고 로직은 여기서 검증한다 ──
 
 /** next/headers cookies()와 구조 호환되는 최소 인터페이스 (테스트는 fake store 주입) */
-export interface DeletionCookieStore {
-  get(name: string): { value: string } | undefined;
-  delete(options: { name: string; path: string }): unknown;
+export interface DeletionCookieStore extends DeletionCookieReadStore {
+  delete(spec: DeletionCookieClearSpec): unknown;
 }
 
 export type ConfirmDeletionCoreOutcome =
@@ -302,10 +306,10 @@ export type ConfirmDeletionCoreOutcome =
   | { kind: 'rate-limited'; retryAfterMs: number | undefined };
 
 /**
- * cookie에서 토큰을 읽어 탈퇴를 수행하고, rate-limit을 제외한 모든 결과에서
- * cookie를 제거한다 (성공·invalid·expired·blocked·error). rate-limit은 사용자가
- * 잠시 후 같은 링크로 재시도할 수 있어야 하므로 cookie를 유지한다.
- * cookie 부재는 'invalid' 결과로 일반화한다.
+ * cookie에서 토큰을 읽어(환경별 정식 이름) 탈퇴를 수행하고, rate-limit을 제외한
+ * 모든 결과에서 cookie를 제거한다 (성공·invalid·expired·blocked·error — 일반·
+ * __Secure- 이름 모두 만료). rate-limit은 사용자가 잠시 후 같은 링크로 재시도할
+ * 수 있어야 하므로 cookie를 유지한다. cookie 부재는 'invalid' 결과로 일반화한다.
  */
 export async function confirmDeletionCore(
   params: {
@@ -313,13 +317,14 @@ export async function confirmDeletionCore(
     ipAddress: string;
     cookieStore: DeletionCookieStore;
     cookiePath: string;
+    isProduction: boolean;
   },
   deps: AuthServiceDeps = getDefaultAuthDeps(),
   hooks?: AccountDeletionHooks,
 ): Promise<ConfirmDeletionCoreOutcome> {
-  const rawToken = params.cookieStore.get(ACCOUNT_DELETION_TOKEN_COOKIE)?.value;
-  const clearCookie = () => {
-    params.cookieStore.delete({ name: ACCOUNT_DELETION_TOKEN_COOKIE, path: params.cookiePath });
+  const rawToken = readDeletionTokenCookie(params.cookieStore, params.isProduction);
+  const clearCookies = () => {
+    clearDeletionTokenCookies(params.cookieStore, params.cookiePath);
   };
 
   if (!rawToken) {
@@ -339,16 +344,14 @@ export async function confirmDeletionCore(
       const retryAfterMs = (error.details as { retryAfterMs?: number } | undefined)?.retryAfterMs;
       return { kind: 'rate-limited', retryAfterMs };
     }
-    // 토큰·이메일·userId 미기록 — 메시지만 남긴다
-    console.error(
-      '[users] 계정 탈퇴 처리 실패',
-      error instanceof Error ? error.message : 'unknown error',
-    );
-    clearCookie();
+    // 고정 문자열만 기록 — exception message에 토큰·이메일·URL이 섞여 들어올 수
+    // 있으므로 어떤 환경에서도 오류 객체·message를 출력하지 않는다
+    console.error('[users] 계정 탈퇴 처리 실패');
+    clearCookies();
     return { kind: 'result', status: 'error' };
   }
 
-  clearCookie();
+  clearCookies();
   if (result === 'deleted') {
     return { kind: 'deleted' };
   }

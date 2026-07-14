@@ -55,10 +55,13 @@ export async function confirmDeletionAction(
     sessionUserId: session.user.id,
     ipAddress: getClientIp(await headers()),
     cookiePath: deletionCookiePath(locale),
+    isProduction: process.env.NODE_ENV === 'production',
     cookieStore: {
       get: (name) => cookieStore.get(name),
-      // path 옵션을 보장하기 위해 set(maxAge: 0)으로 제거한다
-      delete: ({ name, path }) => cookieStore.set(name, '', { path, maxAge: 0 }),
+      // Path 옵션 보장을 위해 set(maxAge: 0)으로 제거 — __Secure- 이름은 브라우저가
+      // Secure 속성 없는 만료도 거부하므로 spec의 secure 플래그를 그대로 전달한다
+      delete: ({ name, path, maxAge, httpOnly, sameSite, secure }) =>
+        cookieStore.set(name, '', { path, maxAge, httpOnly, sameSite, secure }),
     },
   });
 

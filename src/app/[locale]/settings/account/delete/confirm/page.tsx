@@ -6,8 +6,8 @@ import { Link, redirect } from '@/i18n/navigation';
 import { getSession } from '@/lib/session';
 import { getAccountDeletionPreflight } from '@/modules/users/account-deletion';
 import {
-  ACCOUNT_DELETION_TOKEN_COOKIE,
   NEXT_DELETE_CONFIRM,
+  readDeletionTokenCookie,
 } from '@/modules/users/deletion-token-cookie';
 
 import { ConfirmDeletionForm } from './confirm-form';
@@ -40,7 +40,8 @@ export default async function ConfirmDeletionPage({
 
   const t = await getTranslations('settings.accountDeletion.confirm');
   const cookieStore = await cookies();
-  const rawToken = cookieStore.get(ACCOUNT_DELETION_TOKEN_COOKIE)?.value ?? null;
+  // 환경별 정식 cookie 이름으로만 읽는다 (production: __Secure- prefix)
+  const rawToken = readDeletionTokenCookie(cookieStore, process.env.NODE_ENV === 'production');
 
   const preflight =
     rawToken === null
