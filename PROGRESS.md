@@ -16,7 +16,7 @@
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
 | 1D    | Verification — hermetic build·CI·audit ✅(1D-1) / Playwright E2E·최종 회귀 ✅(1D-2)         | ✅ 완료 (2026-07-15)   |
-| 2     | Public Marketplace — 공개 프로그램 목록 🚧(2A) / 상세·검색·SEO·찜 ⬜                        | 🚧 진행 중 (2A)        |
+| 2     | Public Marketplace — 공개 프로그램 목록 ✅(2A) / 상세·검색·SEO·찜 ⬜                        | 🚧 진행 중 (2A 완료)   |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
 | 5     | Booking & Payment                                                                           | ⬜ 미착수              |
@@ -670,7 +670,7 @@ deletion 전체 happy-path는 여전히 미검증.
 **사용자 결정 필요**: public 저장소 ↔ README "Private — All rights reserved"·`LICENSE` 부재 불일치
 (이번에도 미수정).
 
-## Phase 2A 기록 (진행 중, 2026-07-15)
+## Phase 2A 기록 (완료, 2026-07-15)
 
 Phase 2(Public Marketplace)의 첫 PR — **공개 프로그램 목록** vertical slice. 상세·검색·facet·찜은
 이후 PR(2B~)로 분리한다.
@@ -708,7 +708,9 @@ APPROVED·profilePublished · User ACTIVE·미탈퇴`. 사용자 필터(country/
 - E2E 무결성: e2e DB seed 보존(programs 40 · published 38 · `traveler@test.com` 유지), 통과 후
   현재 run fixture 잔여 0.
 
-**CI green 대기**: 이 PR의 GitHub Actions `verify` + `e2e` job 확인 후 완료 표기(별도 commit) 예정.
+**CI green**: 이 PR([#9](https://github.com/eric-talez/Monthly_Living/pull/9))의 GitHub Actions
+`verify` + `e2e` job **모두 통과**(clean checkout). Phase 2A 완료 — **draft 유지**(merge·Ready 전환
+없이 사용자 재검토 대기). Phase 2B(상세) 이후 미착수.
 
 ## 알려진 문제
 
