@@ -44,6 +44,7 @@ cp .env.example .env.local   # DATABASE_URL·AUTH_SECRET 필수 — fallback 없
 # AUTH_SECRET을 직접 생성해 .env.local에 채운다 (저장소 커밋 금지):
 #   openssl rand -base64 32
 pnpm db:generate             # Prisma Client 생성 (src/generated/ — git 미추적)
+pnpm typegen                 # next-env.d.ts + route 타입 생성 (.next/types — git 미추적)
 pnpm lint
 pnpm typecheck
 pnpm build
@@ -107,6 +108,7 @@ pnpm test:integration  # DB 통합 테스트 — TEST_DATABASE_URL 전용, dev D
 pnpm db:format     # Prisma schema 포맷
 pnpm db:validate   # Prisma schema 검증
 pnpm db:generate   # Prisma Client 생성
+pnpm typegen       # next-env.d.ts + route 타입 생성 (typecheck/build 이전 필요)
 ```
 
 ## 프로젝트 구조
