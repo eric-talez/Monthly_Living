@@ -1,5 +1,7 @@
 # 한달살기
 
+[![CI](https://github.com/eric-talez/Monthly_Living/actions/workflows/ci.yml/badge.svg)](https://github.com/eric-talez/Monthly_Living/actions/workflows/ci.yml)
+
 제주 · 태국(방콕/치앙마이/푸껫/코사무이) · 베트남(다낭/호찌민/하노이/나트랑)에서 목적 기반
 한달살기 프로그램을 찾고, 현지 전문가와 연결·예약·결제·메시지까지 이어지는 프리미엄 플랫폼.
 

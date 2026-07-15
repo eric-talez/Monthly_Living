@@ -608,7 +608,9 @@ typecheck → lint → test:unit → build → db:test:prepare → test:integrat
   (CSS 변수 적용·콘솔 무에러 확인).
 - audit: `pnpm why postcss` → 단일 8.5.16, `pnpm why @hono/node-server` → 단일 1.19.14,
   **`pnpm audit --prod` → No known vulnerabilities(moderate 2→0)**, 전체 audit도 high/critical 0.
-- **CI green**: GitHub Actions clean checkout 결과는 PR에서 확인(확인 후 README badge 추가).
+- **CI green (확인됨)**: GitHub Actions clean checkout에서 verify job 전체 통과(2m36s).
+  CI 실제 출력: unit **211 passed**(17 files) · integration **146 passed**(11 files) = 357,
+  `pnpm audit --prod` No known vulnerabilities. README에 CI badge 추가.
 
 **사용자 결정 필요 (1D-1에서 수정하지 않음)**
 
