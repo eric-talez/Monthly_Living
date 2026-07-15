@@ -15,7 +15,7 @@
 | 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit          | ✅ 완료 (2026-07-12)   |
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
-| 1D    | Verification — hermetic build·GitHub Actions CI·audit ✅(1D-1) / Playwright E2E ⬜(1D-2)    | 🚧 진행 중 (1D-1)      |
+| 1D    | Verification — hermetic build·CI·audit ✅(1D-1) / Playwright E2E·최종 회귀 ✅(1D-2)         | ✅ 완료 (2026-07-15)   |
 | 2     | Public Marketplace                                                                          | ⬜ 미착수              |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
@@ -617,8 +617,58 @@ typecheck → lint → test:unit → build → db:test:prepare → test:integrat
 - 저장소가 public이나 README 라이선스는 "Private — All rights reserved"이고 `LICENSE` 파일이 없다.
   라이선스/공개 범위는 소유자 결정 사항이므로 임의 수정하지 않고 보고만 한다.
 
-**다음 (1D-2)**: Playwright 핵심 E2E(라우팅·protected redirect·역할별 목적지·온보딩·재진입 차단·
-잘못된 로그인 a11y·탈퇴 토큰-strip smoke) + 최종 Phase 1 회귀. 1D-1 merge 후 별도 승인.
+**다음**: Phase 2 (Public Marketplace). Phase 1(1A~1D) 완료.
+
+## Phase 1D-2 기록 (2026-07-15) — Playwright 핵심 E2E · 최종 Phase 1 회귀
+
+Phase 1D의 두 번째 PR(PR #8)로 브라우저 E2E를 추가해 **Phase 1D를 완료**한다. baseline은
+`main@c167dba`(PR #7 merge).
+
+**구현 내용**
+
+- **Playwright 하네스**: `@playwright/test`(exact) + `playwright.config.ts`(chromium 단일,
+  `workers:1`, `retries: CI?1:0` — 2는 login rate limit 초과). **production `next start`**
+  (port 3100, dev fallback 없음); `AUTH_URL=http://localhost:3100`이 세션 쿠키를 비-Secure로
+  만들어 http에서 보유. persisted `.auth`/storageState 없이 매 테스트 실 로그인.
+- **명시적 orchestration**: `scripts/e2e-prepare.ts`가 기존 `db-url-guard`(localhost·`_test`·
+  NODE_ENV≠production)를 재사용해 전용 **`handalsalgi_e2e_test`** 에 `migrate deploy` +
+  idempotent seed 적용(reset 금지·fail-closed). `test:e2e = e2e:prepare && playwright test`로
+  playwright 실행 전에 DB 준비를 완료한다(globalSetup lifecycle에 migrate/seed 미탑재).
+- **run-scoped 격리**: `E2E_RUN_ID`를 config에서 1회 고정 → main·worker·globalTeardown 공유
+  (실측 3자 동일). fixture 이메일 `e2e-${runId}-…@e2e.test`, teardown은 **현재 run prefix만**
+  삭제(다른 run·seed `@test.com` 불침해). test-scoped `incompleteTraveler`는 throw/timeout에도
+  teardown 실행 → 각 retry가 fresh 미완료 user. worker-scoped Prisma client는 명시적 disconnect.
+- **7 spec / 13 test**: locale routing · 비로그인 보호 redirect · 역할별 post-login 목적지 ·
+  미완료→온보딩 저장(+DB 확인) · 완료 재진입 차단 · 잘못된 로그인 a11y · 탈퇴 토큰-strip(정상형식
+  dummy token, GET 미소비) + EXPERT unsupported. selector는 role/label/id(신규 `data-testid` 없음).
+- **CI**: 기존 `verify` job 불변, 별도 **`e2e` job(`needs: verify`)** — postgres:16
+  `handalsalgi_e2e_test`, browser 캐시, `playwright install --with-deps chromium`,
+  build→e2e:prepare→test 분리 step, 실패 시에만 report/trace artifact(retention 3).
+- **문서**: PR #7 누락 보정 — clean-checkout·품질 명령에 `pnpm typegen` 추가. `.env.example`에
+  `E2E_DATABASE_URL`(tooling-only — app runtime·env.ts 무관) 문서화.
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- schema/migration·auth/onboarding/탈퇴 서비스 로직 변경 없음. test-only route·인증 우회·
+  production backdoor 없음(실 Credentials 경유). multi-browser·visual snapshot·중복 E2E 없음.
+- account deletion **전체 happy-path** E2E 미포함(탈퇴 확인 쿠키는 http에서 Secure라 브라우저가
+  폐기 + console token scraping 미채택 — malformed token 분기는 기존 unit/integration이 커버).
+
+**검증 결과** (2026-07-15, 로컬 + CI, 전부 통과)
+
+- 로컬(exit 0): install `--frozen-lockfile`·db:generate·typegen·db:format(무변경)·db:validate·
+  format:check·typecheck·lint·`TZ=UTC pnpm test`(**357 회귀 유지** — unit 211·integration 146)·
+  build·`pnpm test:e2e`(**13 passed**, 7 spec chromium)·audit --prod(0).
+- run-scoped 실측: `E2E_RUN_ID` 전파 setup=worker=teardown 동일; cleanup 회귀(다른 run 보존·
+  현재 run 삭제·`@e2e.test` 잔여 0); 통과 후 fixture 0·seed 보존; test:e2e 정상 종료(연결 hang 없음).
+- artifact 미추적: generated/build/env/playwright-report/test-results/.auth.
+- **CI green**: PR #8에서 `verify` + `e2e` job 모두 통과(clean checkout). CI 실측 E2E **13 passed**.
+
+**알려진 한계 (유지)**: 실 Google/Kakao OAuth credential 왕복 E2E, 실 email provider, account
+deletion 전체 happy-path는 여전히 미검증.
+
+**사용자 결정 필요**: public 저장소 ↔ README "Private — All rights reserved"·`LICENSE` 부재 불일치
+(이번에도 미수정).
 
 ## 알려진 문제
 

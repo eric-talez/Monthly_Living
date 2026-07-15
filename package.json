@@ -20,6 +20,9 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest",
+    "e2e:prepare": "tsx scripts/e2e-prepare.ts",
+    "test:e2e": "pnpm e2e:prepare && playwright test",
+    "test:e2e:ui": "pnpm e2e:prepare && playwright test --ui",
     "db:format": "prisma format",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
@@ -46,6 +49,7 @@
   },
   "devDependencies": {
     "@auth/core": "0.41.2",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "8.20.0",

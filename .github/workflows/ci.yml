@@ -108,3 +108,89 @@ jobs:
       # override 이후 moderate 0 / high·critical 0을 CI에서 상시 확인.
       - name: Dependency audit (prod)
         run: pnpm audit --prod
+
+  # Playwright 핵심 E2E (Phase 1D-2) — verify가 green일 때만 실행한다.
+  e2e:
+    needs: verify
+    runs-on: ubuntu-latest # container 금지 — service가 localhost여야 DB guard 통과
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      # 전부 CI 전용 non-secret constant. OAuth env 미설정 → Credentials만 로드.
+      APP_URL: http://localhost:3100
+      AUTH_URL: http://localhost:3100 # 비-Secure 세션 쿠키(authjs.session-token)의 결정적 요소
+      AUTH_TRUST_HOST: 'true'
+      AUTH_SECRET: ci-not-a-real-secret-e2e-only-000000000000 # 길이>=32
+      EMAIL_PROVIDER: console
+      NEXT_TELEMETRY_DISABLED: '1'
+      TZ: UTC
+      # app/build는 DATABASE_URL을, guard/e2e-prepare/helper는 E2E_DATABASE_URL을 읽는다 —
+      # 같은 값(전용 _test DB, dev/prod/외부 fallback 없음).
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handalsalgi_e2e_test
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handalsalgi_e2e_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres # 로컬/CI 전용 — 실제 secret 아님
+          POSTGRES_DB: handalsalgi_e2e_test # 반드시 _test로 끝나야 guard 통과
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d handalsalgi_e2e_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # build와 E2E helper 모두 generated client을 import한다(git 미추적).
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # build → prepare(guarded migrate deploy + seed) → test를 별도 step으로(로그 귀속 명확).
+      # webServer는 CI에서 build 없이 `pnpm start`만 한다(playwright.config).
+      - name: Build
+        run: pnpm build
+
+      - name: Prepare E2E database
+        run: pnpm e2e:prepare
+
+      - name: E2E tests
+        run: pnpm exec playwright test
+
+      # 실패 시에만 report/trace 업로드 — run-state·.auth·storageState는 애초에 미생성.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 3
