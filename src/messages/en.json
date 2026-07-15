@@ -9,7 +9,9 @@
       "homeLink": "Go to home",
       "loginLink": "Log in",
       "logoutButton": "Log out",
-      "signedInAs": "Signed in as {email}"
+      "signedInAs": "Signed in as {email}",
+      "programsLink": "Programs",
+      "navLabel": "Main menu"
     },
     "footer": {
       "description": "A premium platform for designing your month-long stay in Jeju, Thailand, and Vietnam around your goals",
@@ -43,7 +45,60 @@
         "cities": "Da Nang · Ho Chi Minh City · Hanoi · Nha Trang"
       }
     },
-    "notice": "Fitness, yoga, golf, surfing, remote work, language learning, and wellness — we are building a service that connects you with local experts and programs that fit your goals."
+    "notice": "Fitness, yoga, golf, surfing, remote work, language learning, and wellness — we are building a service that connects you with local experts and programs that fit your goals.",
+    "cta": {
+      "browse": "Browse programs",
+      "viewRegion": "Explore {region} programs"
+    }
+  },
+  "programs": {
+    "title": "Browse programs",
+    "subtitle": "Find a month-long stay program tailored to your goals in Jeju, Thailand, and Vietnam.",
+    "filters": {
+      "country": "Country",
+      "destination": "City",
+      "category": "Category",
+      "all": "All",
+      "clear": "Clear filters"
+    },
+    "sort": {
+      "label": "Sort",
+      "featured": "Featured",
+      "priceAsc": "Price: low to high",
+      "priceDesc": "Price: high to low",
+      "rating": "Rating"
+    },
+    "results": {
+      "count": "{count, plural, =0 {No programs match your filters} one {# program} other {# programs}}"
+    },
+    "card": {
+      "perPerson": "{price} / person",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "sessions": "{count, plural, one {# session} other {# sessions}}",
+      "rating": "★ {rating}",
+      "reviews": "{count, plural, one {# review} other {# reviews}}",
+      "online": "Online",
+      "noImage": "No image",
+      "durationLabel": "Duration",
+      "sessionsLabel": "Sessions",
+      "ratingLabel": "Rating"
+    },
+    "empty": {
+      "title": "No programs match your filters",
+      "description": "Try adjusting or clearing your filters.",
+      "reset": "Clear filters"
+    },
+    "error": {
+      "title": "We couldn't load programs",
+      "description": "A temporary error occurred. Please try again in a moment.",
+      "retry": "Try again"
+    },
+    "pagination": {
+      "label": "Pagination",
+      "previous": "Previous",
+      "next": "Next",
+      "pageInfo": "{page} / {totalPages}"
+    }
   },
   "onboarding": {
     "common": {
