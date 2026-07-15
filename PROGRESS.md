@@ -15,7 +15,7 @@
 | 1C-1  | Authentication Core — 이메일/비밀번호 가입·로그인, 이메일 인증, 재설정, rate limit          | ✅ 완료 (2026-07-12)   |
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
-| 1D    | Verification — Phase 1 통합 점검, CI                                                        | ⬜ 미착수              |
+| 1D    | Verification — hermetic build·GitHub Actions CI·audit ✅(1D-1) / Playwright E2E ⬜(1D-2)    | 🚧 진행 중 (1D-1)      |
 | 2     | Public Marketplace                                                                          | ⬜ 미착수              |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
@@ -559,12 +559,68 @@ production(`next start` + AUTH_TRUST_HOST=true): 인증 페이지 전부 200,
 
 **다음**: 실 email provider·대시보드 도입 시 resolver 목적지 교체.
 
+## Phase 1D-1 기록 (2026-07-15) — Hermetic Build · GitHub Actions CI · Dependency Audit
+
+Phase 1D는 두 PR로 분할한다: **1D-1**(재현 가능한 빌드·CI·audit, 이 기록)과 **1D-2**(Playwright
+핵심 E2E + 최종 회귀, 대기). baseline은 origin/main `04af8dd`(PR #6 merge, 357 테스트)에 정렬.
+
+**구현 내용**
+
+- **폰트 self-host** (`next/font/google` → `next/font/local`): `src/app/[locale]/layout.tsx`가
+  이제 `src/fonts/`의 self-host woff2를 로드한다 — 빌드가 fonts.gstatic.com에 의존하지 않아
+  네트워크 없이 재현된다. weight(Sans 400/500/700·Serif 400/600/700)와 CSS 변수
+  (`--font-noto-sans-kr`·`--font-noto-serif-kr`)는 기존 계약 그대로. **latin subset만** 포함해
+  기존 렌더 범위 유지(한글은 기존과 동일하게 시스템 폴백). 파일 6개(latin, 총 ~116KB) +
+  `OFL.txt`(SIL OFL 1.1) + `SOURCE.md`(출처·버전). 출처: Fontsource `@fontsource/noto-*-kr@5.2.9`
+  (상위 Noto Sans KR v39 / Noto Serif KR v31, © Google Inc.). 전체 한글 폰트·대규모 typography
+  변경은 하지 않음(범위 밖).
+- **의존성 audit override** (`pnpm-workspace.yaml` `overrides`, 정확한 버전 pin):
+  `postcss` → `8.5.16`(next@16.2.10 번들 8.4.31의 GHSA-qx2v-qp2m-jg93 `<8.5.10` 대응, build-time),
+  `@hono/node-server` → `1.19.14`(prisma>@prisma/dev의 1.19.11 GHSA-92pp-h63x-v22m `<1.19.13`
+  대응, dev 툴링·앱 런타임 미도달). Next/Prisma/Auth.js 직접 업그레이드 없음.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`, 단일 `verify` job): `permissions: contents:
+read` · concurrency+cancel-in-progress · `push`/`pull_request` on `main`. `pnpm/action-setup@v4`
+  (packageManager의 pnpm 11.9.0 사용) + `actions/setup-node@v4`(`.nvmrc`=22.23.1, pnpm 캐시).
+  **postgres:16 service의 전용 `handalsalgi_test` DB만** 사용(localhost:5432, `_test` 접미사 —
+  DB guard 통과), dev/prod/외부 DB fallback 없음. 실제 secret 없이 test-only constant만.
+  `NEXT_TELEMETRY_DISABLED=1`·`TZ=UTC`. 순서:
+  `install → db:generate → typegen(next typegen) → db:validate → db:format+diff → format:check →
+typecheck → lint → test:unit → build → db:test:prepare → test:integration → audit --prod`.
+  lint/typecheck/build는 독립 gate로 유지(build가 lint를 대체한다고 가정하지 않음).
+- **CI 순서 제약 해소**: `src/generated/`(git 미추적)는 `db:generate`가, `next-env.d.ts`/
+  `.next/types`(git 미추적)는 새 `pnpm typegen`(`next typegen`)이 각각 lint·typecheck·build
+  **이전**에 명시 생성한다 → typecheck가 우연한 build 산출물에 의존하지 않는다. `next` 액션
+  참조는 major 태그(@v4)로 일관 고정(1st-party 공식 액션, 유지보수성 우선).
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- Playwright E2E·페이지 렌더 테스트(1D-2 범위). schema/migration·auth/탈퇴/온보딩 동작 변경 없음.
+- Next/Prisma/Auth.js 등 대규모 dependency upgrade, Resend/Redis/S3/Stripe 도입, production 배포 없음.
+- LICENSE 파일 추가·README 라이선스 문구 변경 없음(아래 "사용자 결정 필요" 참고).
+
+**검증 결과** (2026-07-15, 로컬 — node 22.23.1·pnpm 11.9.0·PostgreSQL 16)
+
+- `pnpm install --frozen-lockfile` · `db:generate` · `typegen` · `db:format`(무변경) · `db:validate`
+  · `format:check` · `typecheck` · `lint` 전부 통과(exit 0).
+- **테스트 357개 통과** (`TZ=UTC pnpm test` — unit 211 · integration 146, 28 파일). 시간대 독립 확인.
+- `pnpm build`: 성공. `.next/static/media`에 self-host woff2 6개 emit, 산출물에
+  fonts.gstatic.com/googleapis 참조 없음. dev 서버에서 `/`(ko)·`/en` typography/레이아웃 회귀 없음
+  (CSS 변수 적용·콘솔 무에러 확인).
+- audit: `pnpm why postcss` → 단일 8.5.16, `pnpm why @hono/node-server` → 단일 1.19.14,
+  **`pnpm audit --prod` → No known vulnerabilities(moderate 2→0)**, 전체 audit도 high/critical 0.
+- **CI green**: GitHub Actions clean checkout 결과는 PR에서 확인(확인 후 README badge 추가).
+
+**사용자 결정 필요 (1D-1에서 수정하지 않음)**
+
+- 저장소가 public이나 README 라이선스는 "Private — All rights reserved"이고 `LICENSE` 파일이 없다.
+  라이선스/공개 범위는 소유자 결정 사항이므로 임의 수정하지 않고 보고만 한다.
+
+**다음 (1D-2)**: Playwright 핵심 E2E(라우팅·protected redirect·역할별 목적지·온보딩·재진입 차단·
+잘못된 로그인 a11y·탈퇴 토큰-strip smoke) + 최종 Phase 1 회귀. 1D-1 merge 후 별도 승인.
+
 ## 알려진 문제
 
-- **CI 순서 제약**: `src/generated/`(Prisma Client)는 git 미추적이므로 CI에서
-  `pnpm db:generate`가 **typecheck·build보다 먼저** 실행되어야 한다
-  (`pnpm install → db:generate → lint → typecheck → build`). Phase 1D CI 워크플로에 반영할 것.
-- **Google Fonts 빌드 시 네트워크 의존**: `next/font/google`이 빌드 시점에
-  Noto Sans KR/Noto Serif KR을 내려받아 self-host함(런타임 의존 없음).
-  네트워크 없는 CI/오프라인 빌드는 실패 위험 → 향후 CI 캐시 또는
-  OFL 라이선스 확인 후 `next/font/local` self-host로 전환 검토 (Phase 8).
+- **CI 순서 제약** — ✅ 1D-1에서 해소. `db:generate`(Prisma Client)와 `typegen`(`next typegen`으로
+  `next-env.d.ts`·route types)를 lint/typecheck/build **이전**에 실행하도록 CI에 반영.
+- **Google Fonts 빌드 시 네트워크 의존** — ✅ 1D-1에서 해소. `next/font/local` self-host(latin
+  subset woff2 + OFL) 전환으로 빌드 시 fonts.gstatic.com 접근 제거(위 1D-1 기록 참고).
