@@ -12,7 +12,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
 
   const session = await getSession();
   if (session?.user) {
-    redirect({ href: '/', locale });
+    redirect({ href: '/post-login', locale });
   }
 
   const t = await getTranslations('auth');

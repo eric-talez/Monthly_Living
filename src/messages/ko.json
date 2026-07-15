@@ -45,6 +45,108 @@
     },
     "notice": "운동, 요가, 골프, 서핑, 원격근무, 언어 공부, 힐링까지 — 목적에 맞는 현지 전문가와 프로그램을 연결하는 서비스를 만들고 있습니다."
   },
+  "onboarding": {
+    "common": {
+      "submitting": "저장 중…",
+      "errorSummaryTitle": "입력 내용을 확인해 주세요",
+      "unexpectedError": "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+      "optional": "선택"
+    },
+    "title": "프로필 설정",
+    "description": "예약과 추천을 위해 기본 정보와 여행 선호를 알려주세요. 별표(*)는 필수 항목입니다.",
+    "submit": "저장하고 시작하기",
+    "sections": {
+      "basic": "기본 정보",
+      "region": "지역·환경 설정",
+      "interests": "여행 목적·관심 지역",
+      "style": "여행 스타일",
+      "extra": "추가 정보 (선택)"
+    },
+    "fields": {
+      "fullName": "이름",
+      "nickname": "닉네임",
+      "phone": "전화번호",
+      "country": "거주 국가",
+      "timezone": "시간대",
+      "uiLanguage": "표시 언어",
+      "currency": "선호 통화",
+      "travelPurposes": "여행 목적",
+      "preferredCountries": "관심 국가",
+      "preferredCities": "관심 도시",
+      "travelStyles": "여행 스타일",
+      "spokenLanguages": "사용 가능 언어",
+      "budgetMin": "월 예산 하한",
+      "budgetMax": "월 예산 상한",
+      "groupSize": "동행 인원",
+      "hasChildren": "아이와 함께 여행",
+      "hasPet": "반려동물과 함께 여행",
+      "accessibilityNeeds": "접근성 요청 사항"
+    },
+    "hints": {
+      "destination": "관심 국가 또는 관심 도시를 하나 이상 선택해 주세요.",
+      "budget": "월 기준 대략적인 예산 범위입니다 (선택)."
+    },
+    "uiLanguage": { "ko": "한국어", "en": "English" },
+    "spokenLanguages": {
+      "ko": "한국어",
+      "en": "English",
+      "ja": "일본어",
+      "zh": "중국어",
+      "th": "태국어",
+      "vi": "베트남어"
+    },
+    "countries": {
+      "KR": "대한민국",
+      "US": "미국",
+      "CA": "캐나다",
+      "TH": "태국",
+      "VN": "베트남"
+    },
+    "styles": {
+      "nature": "자연",
+      "city": "도시",
+      "beach": "해변",
+      "culture": "문화",
+      "food": "미식",
+      "wellness": "웰니스",
+      "adventure": "액티비티",
+      "quiet": "조용한 휴식",
+      "social": "교류",
+      "budget": "가성비",
+      "luxury": "럭셔리",
+      "remote-work": "원격근무",
+      "family": "가족",
+      "flexible": "유연한 일정"
+    },
+    "validation": {
+      "required": "필수 입력 항목입니다.",
+      "fullNameTooLong": "이름이 너무 깁니다.",
+      "countryInvalid": "지원하는 국가를 선택해 주세요.",
+      "timezoneInvalid": "선택한 국가에 맞는 시간대를 선택해 주세요.",
+      "localeInvalid": "지원하는 표시 언어를 선택해 주세요.",
+      "currencyInvalid": "지원하는 통화를 선택해 주세요.",
+      "purposesRequired": "여행 목적을 하나 이상 선택해 주세요.",
+      "purposesTooMany": "여행 목적을 너무 많이 선택했습니다.",
+      "purposeUnknown": "선택할 수 없는 여행 목적이 포함되어 있습니다.",
+      "destinationRequired": "관심 국가 또는 관심 도시를 하나 이상 선택해 주세요.",
+      "countriesTooMany": "관심 국가를 너무 많이 선택했습니다.",
+      "citiesTooMany": "관심 도시를 너무 많이 선택했습니다.",
+      "countryUnavailable": "현재 지원하지 않는 국가가 포함되어 있습니다.",
+      "cityUnavailable": "현재 지원하지 않는 도시가 포함되어 있습니다.",
+      "stylesRequired": "여행 스타일을 하나 이상 선택해 주세요.",
+      "stylesTooMany": "여행 스타일을 너무 많이 선택했습니다.",
+      "styleInvalid": "선택할 수 없는 여행 스타일이 포함되어 있습니다.",
+      "languagesTooMany": "언어를 너무 많이 선택했습니다.",
+      "languageInvalid": "선택할 수 없는 언어가 포함되어 있습니다.",
+      "nicknameTooLong": "닉네임이 너무 깁니다.",
+      "phoneInvalid": "전화번호 형식이 올바르지 않습니다.",
+      "phoneTooLong": "전화번호가 너무 깁니다.",
+      "budgetInvalid": "예산은 0 이상의 숫자여야 합니다.",
+      "budgetRange": "예산 상한은 하한보다 크거나 같아야 합니다.",
+      "groupSizeInvalid": "동행 인원이 올바르지 않습니다.",
+      "accessibilityTooLong": "요청 사항이 너무 깁니다."
+    }
+  },
   "notFound": {
     "title": "페이지를 찾을 수 없습니다",
     "description": "주소가 잘못되었거나, 페이지가 이동 또는 삭제되었을 수 있습니다.",

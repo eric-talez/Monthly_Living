@@ -26,7 +26,7 @@ export default async function LoginPage({
 
   const session = await getSession();
   if (session?.user) {
-    redirect({ href: next ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/', locale });
+    redirect({ href: next ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/post-login', locale });
   }
 
   const t = await getTranslations('auth');

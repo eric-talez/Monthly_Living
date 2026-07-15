@@ -35,14 +35,13 @@ export async function signInWithOAuthProvider(
   }
 
   // 복귀 대상은 whitelist 키만 해석한다 (open redirect 방지). locale prefix는 유지 —
-  // 이 경로가 신규 가입 preferredLanguage 판정의 근거이기도 하다.
+  // 이 경로가 신규 가입 preferredLanguage 판정의 근거이기도 하다. 일반 로그인은
+  // post-login dispatcher로 보내 역할·온보딩 상태에 맞는 목적지를 결정한다.
   const basePath =
-    formData?.get('next') === NEXT_DELETE_CONFIRM ? ACCOUNT_DELETION_CONFIRM_PATHNAME : '/';
-  const redirectTo =
-    locale === routing.defaultLocale
-      ? basePath
-      : basePath === '/'
-        ? `/${locale}`
-        : `/${locale}${basePath}`;
+    formData?.get('next') === NEXT_DELETE_CONFIRM
+      ? ACCOUNT_DELETION_CONFIRM_PATHNAME
+      : '/post-login';
+  // basePath는 항상 non-root(post-login 또는 confirm 경로)이므로 locale prefix를 그대로 붙인다
+  const redirectTo = locale === routing.defaultLocale ? basePath : `/${locale}${basePath}`;
   await signIn(providerId, { redirectTo });
 }
