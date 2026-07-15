@@ -201,21 +201,34 @@ describe('listPublicPrograms — visibility 계약', () => {
     });
     present.deleted = deleted.slug;
 
-    // 전문가/유저 결함
-    const pendingExpert = await makeExpert(dest.id, {
-      verificationStatus: 'PENDING',
+    // 전문가 verificationStatus 독립 검증 — 나머지 조건은 모두 공개 가능 상태로 유지
+    // (profilePublished=true, User ACTIVE·미탈퇴, Program PUBLISHED·미삭제, dest/cat active)
+    // → verificationStatus 하나만으로 차단됨을 격리 확인한다.
+    for (const verificationStatus of [
+      'PENDING',
+      'UNDER_REVIEW',
+      'REJECTED',
+    ] as ExpertVerificationStatus[]) {
+      const expert = await makeExpert(dest.id, { verificationStatus, profilePublished: true });
+      present[`verification_${verificationStatus}`] = (
+        await makeProgram({ destinationId: dest.id, categoryId: cat.id, expertId: expert })
+      ).slug;
+    }
+
+    // profilePublished 독립 검증 — APPROVED이지만 미게시
+    const unpublishedExpert = await makeExpert(dest.id, {
+      verificationStatus: 'APPROVED',
       profilePublished: false,
     });
-    present.expertPending = (
-      await makeProgram({ destinationId: dest.id, categoryId: cat.id, expertId: pendingExpert })
-    ).slug;
-
-    const unpublishedExpert = await makeExpert(dest.id, { profilePublished: false });
     present.expertUnpublished = (
       await makeProgram({ destinationId: dest.id, categoryId: cat.id, expertId: unpublishedExpert })
     ).slug;
 
-    const suspendedUserExpert = await makeExpert(dest.id, { userStatus: 'SUSPENDED' });
+    // User.status 독립 검증 — SUSPENDED / DELETED (둘 다 deletedAt=null → status 조건만으로 차단)
+    const suspendedUserExpert = await makeExpert(dest.id, {
+      userStatus: 'SUSPENDED',
+      userDeletedAt: null,
+    });
     present.userSuspended = (
       await makeProgram({
         destinationId: dest.id,
@@ -224,12 +237,25 @@ describe('listPublicPrograms — visibility 계약', () => {
       })
     ).slug;
 
-    const deletedUserExpert = await makeExpert(dest.id, {
+    const deletedStatusExpert = await makeExpert(dest.id, {
+      userStatus: 'DELETED',
+      userDeletedAt: null,
+    });
+    present.userStatusDeleted = (
+      await makeProgram({
+        destinationId: dest.id,
+        categoryId: cat.id,
+        expertId: deletedStatusExpert,
+      })
+    ).slug;
+
+    // User.deletedAt 독립 검증 — status=ACTIVE이지만 soft-delete(deletedAt != null)
+    const deletedAtExpert = await makeExpert(dest.id, {
       userStatus: 'ACTIVE',
       userDeletedAt: new Date(),
     });
-    present.userDeleted = (
-      await makeProgram({ destinationId: dest.id, categoryId: cat.id, expertId: deletedUserExpert })
+    present.userDeletedAt = (
+      await makeProgram({ destinationId: dest.id, categoryId: cat.id, expertId: deletedAtExpert })
     ).slug;
   });
 
