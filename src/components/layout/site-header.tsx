@@ -14,13 +14,23 @@ export async function SiteHeader() {
   return (
     <header className="border-border bg-background/95 border-b">
       <Container className="flex h-16 items-center justify-between gap-4">
-        <Link
-          href="/"
-          aria-label={t('homeLink')}
-          className="font-serif text-xl font-semibold tracking-tight"
-        >
-          {t('brand')}
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link
+            href="/"
+            aria-label={t('homeLink')}
+            className="font-serif text-xl font-semibold tracking-tight"
+          >
+            {t('brand')}
+          </Link>
+          <nav aria-label={t('navLabel')}>
+            <Link
+              href="/programs"
+              className="text-foreground/80 hover:text-foreground text-sm font-medium transition-colors"
+            >
+              {t('programsLink')}
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4">
           {session?.user ? (
             <form action={logoutAction} className="flex items-center gap-3">

@@ -5,7 +5,7 @@
 제주 · 태국(방콕/치앙마이/푸껫/코사무이) · 베트남(다낭/호찌민/하노이/나트랑)에서 목적 기반
 한달살기 프로그램을 찾고, 현지 전문가와 연결·예약·결제·메시지까지 이어지는 프리미엄 플랫폼.
 
-> **현재 상태: 개발 진행 중 (Phase 1C-2B 완료\* / Phase 1D 진행 중 — 1D-1: hermetic build·GitHub Actions CI·dependency audit / 1D-2: Playwright E2E 예정)**
+> **현재 상태: 개발 진행 중 (Phase 1 완료\* / Phase 2 진행 중 — 2A 공개 프로그램 목록 완료)**
 > \* 코드·자동 테스트 완료 기준 — OAuth 실제 provider credential 왕복 E2E와 실 email
 > provider(탈퇴 확인 메일 포함)는 등록·도입 후 별도 검증 대기 (PROGRESS 참고).
 > 이 프로젝트의 목표 산출물은 **"production architecture를 갖춘 staging-ready MVP"** 입니다.
@@ -29,7 +29,7 @@
   redirect(post-login dispatcher + 완료 판정 resolver, Phase 1C-2B-2 완료:
   [결정 문서](docs/decisions/profile-onboarding-and-role-redirect.md))
 - **Vitest 4** — unit + DB 통합 테스트(`TEST_DATABASE_URL` 전용) + **GitHub Actions CI**(Phase
-  1D-1) / Playwright E2E — _Phase 1D-2 예정_
+  1D-1) + **Playwright E2E**(Phase 1D-2, chromium, 전용 `handalsalgi_e2e_test`)
 
 ## 로컬 개발 실행
 

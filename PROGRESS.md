@@ -16,7 +16,7 @@
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
 | 1D    | Verification — hermetic build·CI·audit ✅(1D-1) / Playwright E2E·최종 회귀 ✅(1D-2)         | ✅ 완료 (2026-07-15)   |
-| 2     | Public Marketplace                                                                          | ⬜ 미착수              |
+| 2     | Public Marketplace — 공개 프로그램 목록 ✅(2A) / 상세·검색·SEO·찜 ⬜                        | 🚧 진행 중 (2A 완료)   |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
 | 5     | Booking & Payment                                                                           | ⬜ 미착수              |
@@ -669,6 +669,48 @@ deletion 전체 happy-path는 여전히 미검증.
 
 **사용자 결정 필요**: public 저장소 ↔ README "Private — All rights reserved"·`LICENSE` 부재 불일치
 (이번에도 미수정).
+
+## Phase 2A 기록 (완료, 2026-07-15)
+
+Phase 2(Public Marketplace)의 첫 PR — **공개 프로그램 목록** vertical slice. 상세·검색·facet·찜은
+이후 PR(2B~)로 분리한다.
+
+**구현 내용**
+
+- `src/modules/programs/` — 순수 query 파싱·정규화(`query.ts`: 반복 param 첫값, page 위생
+  `[1, PAGE_MAX=1000]`, sort allowlist, canonical redirect 판정 — 알려지지 않은 key 보존),
+  minor-unit 통화 변환(`money.ts`: KRW/VND 지수 0 · THB/USD 지수 2), Zod 형식 스키마
+  (`validation.ts`), server-only 조회 service(`service.ts`).
+- **공개 visibility 계약**을 공용 `PUBLIC_PROGRAM_WHERE`로 중앙화:
+  `status=PUBLISHED · deletedAt IS NULL · Destination/Category.active · Expert
+APPROVED·profilePublished · User ACTIVE·미탈퇴`. 사용자 필터(country/destination/category)는
+  그 위에 AND(country+destination 불일치 시 0건). 존재하지 않거나 inactive한 필터는
+  fail-closed(items:[]). JSON-safe DTO(Decimal→number|null, user PII·verificationNote 미노출).
+- `/programs` RSC 목록 — ko/en 필터·정렬·안정 offset pagination(정렬키 + `id` tie-breaker) ·
+  loading/empty/error 상태. 카드는 요약만(상세 링크 없음 — 2B). dead link·동작하지 않는 CTA 없음.
+- 홈 진입점(전면 개편 없이 CTA + 제주/태국/베트남 지역 필터 링크) + 헤더 `/programs` nav.
+- `PAGE_SIZE=12`. 정렬: featured(기본)·price_asc·price_desc·rating(최신순 제외).
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- `/programs/[slug]` 상세·전문가 공개요약·media gallery·상세 metadata·direct-slug 404 no-leak
+  (→ 2B), 키워드 검색·확장 facet(→ 2C), SEO/sitemap(→ 2D), 찜(ProgramFavorite, → 2E/Phase 3).
+- **schema/migration 변경 없음**(기존 필드·인덱스로 충분, `git diff -- prisma` 무변경). 신규
+  dependency 없음. 외부 검색/지도/analytics 없음. 미들웨어 auth 게이트 변경 없음.
+
+**검증 결과** (2026-07-15, 로컬 전부 exit 0)
+
+- install `--frozen-lockfile` · db:generate · typegen · db:validate · db:format(무변경) ·
+  format:check · typecheck · lint · `pnpm test:unit`(**261** — 기존 211 + 신규 50) · build ·
+  db:test:prepare · `TZ=UTC pnpm test:integration`(**163** — 기존 146 + 신규 17) ·
+  `pnpm test:e2e`(**17 passed** — 기존 13 + 신규 4, chromium) · audit --prod(0) ·
+  `git diff --check` · `git status`(clean).
+- E2E 무결성: e2e DB seed 보존(programs 40 · published 38 · `traveler@test.com` 유지), 통과 후
+  현재 run fixture 잔여 0.
+
+**CI green**: 이 PR([#9](https://github.com/eric-talez/Monthly_Living/pull/9))의 GitHub Actions
+`verify` + `e2e` job **모두 통과**(clean checkout). Phase 2A 완료 — **draft 유지**(merge·Ready 전환
+없이 사용자 재검토 대기). Phase 2B(상세) 이후 미착수.
 
 ## 알려진 문제
 

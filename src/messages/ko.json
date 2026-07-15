@@ -9,7 +9,9 @@
       "homeLink": "홈으로 이동",
       "loginLink": "로그인",
       "logoutButton": "로그아웃",
-      "signedInAs": "로그인됨: {email}"
+      "signedInAs": "로그인됨: {email}",
+      "programsLink": "프로그램",
+      "navLabel": "주요 메뉴"
     },
     "footer": {
       "description": "제주, 태국, 베트남에서의 한달살기를 목적에 맞게 설계하는 프리미엄 플랫폼",
@@ -43,7 +45,60 @@
         "cities": "다낭 · 호찌민 · 하노이 · 나트랑"
       }
     },
-    "notice": "운동, 요가, 골프, 서핑, 원격근무, 언어 공부, 힐링까지 — 목적에 맞는 현지 전문가와 프로그램을 연결하는 서비스를 만들고 있습니다."
+    "notice": "운동, 요가, 골프, 서핑, 원격근무, 언어 공부, 힐링까지 — 목적에 맞는 현지 전문가와 프로그램을 연결하는 서비스를 만들고 있습니다.",
+    "cta": {
+      "browse": "프로그램 둘러보기",
+      "viewRegion": "{region} 프로그램 보기"
+    }
+  },
+  "programs": {
+    "title": "프로그램 둘러보기",
+    "subtitle": "제주·태국·베트남에서 목적에 맞는 한달살기 프로그램을 찾아보세요.",
+    "filters": {
+      "country": "국가",
+      "destination": "도시",
+      "category": "카테고리",
+      "all": "전체",
+      "clear": "필터 초기화"
+    },
+    "sort": {
+      "label": "정렬",
+      "featured": "추천순",
+      "priceAsc": "가격 낮은순",
+      "priceDesc": "가격 높은순",
+      "rating": "평점순"
+    },
+    "results": {
+      "count": "{count, plural, =0 {조건에 맞는 프로그램이 없습니다} other {프로그램 #개}}"
+    },
+    "card": {
+      "perPerson": "1인 {price}",
+      "days": "{count, plural, other {#일}}",
+      "sessions": "{count, plural, other {#회}}",
+      "rating": "★ {rating}",
+      "reviews": "{count, plural, other {리뷰 #}}",
+      "online": "온라인",
+      "noImage": "이미지 없음",
+      "durationLabel": "기간",
+      "sessionsLabel": "세션 수",
+      "ratingLabel": "평점"
+    },
+    "empty": {
+      "title": "조건에 맞는 프로그램이 없습니다",
+      "description": "필터를 조정하거나 초기화해 보세요.",
+      "reset": "필터 초기화"
+    },
+    "error": {
+      "title": "프로그램을 불러오지 못했습니다",
+      "description": "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+      "retry": "다시 시도"
+    },
+    "pagination": {
+      "label": "페이지 이동",
+      "previous": "이전",
+      "next": "다음",
+      "pageInfo": "{page} / {totalPages}"
+    }
   },
   "onboarding": {
     "common": {
