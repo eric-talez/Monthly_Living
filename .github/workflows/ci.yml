@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 최소 권한 — 이 워크플로는 소스 read만 필요하다.
+permissions:
+  contents: read
+
+# 같은 ref의 이전 실행은 취소해 CI 시간을 아낀다.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest # container: 사용 금지 — service가 localhost:5432여야 DB guard 통과
+    timeout-minutes: 20
+    env:
+      # 아래는 전부 CI 전용 non-secret constant다 (실제 secret 아님).
+      # OAuth/email provider 실 credential 없이 unit·integration·build가 동작한다.
+      APP_URL: http://localhost:3000
+      EMAIL_PROVIDER: console
+      AUTH_SECRET: ci-not-a-real-secret-test-only-000000000000 # env.ts는 길이>=32만 요구
+      # DB guard(scripts/db-url-guard.ts)는 localhost + 이름 _test + schema public만 허용한다.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handalsalgi_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handalsalgi_test
+      NEXT_TELEMETRY_DISABLED: '1'
+      TZ: UTC # 테스트가 시간대 독립임을 로컬에서 확인함(날짜 경계 결정성)
+      # NODE_ENV는 설정하지 않는다 — production이면 DB guard가 거부한다.
+      # next build는 자체적으로 production을 설정하며 guard를 호출하지 않는다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres # 로컬/CI 전용 — 실제 secret 아님
+          POSTGRES_DB: handalsalgi_test # 반드시 _test로 끝나야 guard 통과
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d handalsalgi_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      # 공식 1st-party 액션을 major 태그로 고정(유지보수성 + v4 내 패치 자동 수신).
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # packageManager 필드(pnpm@11.9.0)를 단일 소스로 사용 — version 중복 지정 금지.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      # action-setup 이후에 와야 cache: pnpm이 store를 찾는다.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # src/generated는 git-ignore라 모든 gate 이전에 재생성해야 한다.
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      # next-env.d.ts + .next/types(route types)를 명시 생성 — typecheck가 build에 의존하지 않게 한다.
+      - name: Generate Next types
+        run: pnpm typegen
+
+      - name: Validate Prisma schema
+        run: pnpm db:validate
+
+      # prisma format이 canonical과 다르면 실패 — 스키마 포맷 드리프트 방지.
+      - name: Check Prisma schema formatting
+        run: |
+          pnpm db:format
+          git diff --exit-code -- prisma
+
+      - name: Prettier check
+        run: pnpm format:check
+
+      # lint/typecheck/build는 각각 독립 gate로 유지(build가 lint를 대체한다고 가정하지 않음).
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Build
+        run: pnpm build
+
+      # ephemeral test DB에 migration 적용(migrate deploy, guard 경유).
+      - name: Prepare test database
+        run: pnpm db:test:prepare
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      # override 이후 moderate 0 / high·critical 0을 CI에서 상시 확인.
+      - name: Dependency audit (prod)
+        run: pnpm audit --prod
