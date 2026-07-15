@@ -111,6 +111,24 @@ pnpm db:generate   # Prisma Client 생성
 pnpm typegen       # next-env.d.ts + route 타입 생성 (typecheck/build 이전 필요)
 ```
 
+### E2E (Playwright)
+
+브라우저 E2E는 전용 로컬 DB(`handalsalgi_e2e_test`)와 chromium이 필요하다:
+
+```bash
+createdb handalsalgi_e2e_test         # 최초 1회 (또는 docker compose)
+# .env.local에 E2E_DATABASE_URL 지정 (예: postgresql://USER@localhost:5432/handalsalgi_e2e_test)
+pnpm exec playwright install chromium # 최초 1회
+
+pnpm test:e2e         # e2e:prepare(migrate deploy + seed) 후 chromium E2E 실행
+pnpm test:e2e:ui      # Playwright UI 모드
+pnpm e2e:prepare      # E2E DB만 준비 (guard 경유 — 이름 _test 필수)
+```
+
+- production `next start`(port 3100)로 실행하며 dev server fallback을 두지 않는다.
+- 테스트 데이터는 run별 고유 prefix(`e2e-<runId>-…@e2e.test`)로 격리되고 성공·실패 모두 정리된다.
+- 실 Google/Kakao OAuth·실 email provider·account deletion 전체 happy-path는 범위 밖(한계).
+
 ## 프로젝트 구조
 
 ```
@@ -133,7 +151,8 @@ src/
 └── proxy.ts           # locale 라우팅 proxy (Next.js 16)
 tests/
 ├── unit/              # 순수 로직 테스트 (DB 불필요)
-└── integration/       # DB 통합 + 실세션 테스트 — TEST_DATABASE_URL 전용
+├── integration/       # DB 통합 + 실세션 테스트 — TEST_DATABASE_URL 전용
+└── e2e/               # Playwright 브라우저 E2E — E2E_DATABASE_URL 전용 (chromium)
 ```
 
 핵심 규칙:
