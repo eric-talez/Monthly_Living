@@ -50,3 +50,16 @@ export const programListParamsSchema = z.object({
 });
 
 export type ProgramListParams = z.infer<typeof programListParamsSchema>;
+
+/**
+ * 공개 상세용 program slug 파서 — 필터 slug와 동일한 형식 계약(형식·길이·정규화)을 재사용한다.
+ * trim + lowercase로 정규화한 뒤 allowlist·길이만 검사한다. 실제 존재/공개 여부는 service가 판정.
+ * malformed는 throw 없이 `null`을 반환하므로, 라우트는 DB 조회 없이 곧바로 notFound()로 수렴한다.
+ */
+export function parseProgramSlug(raw: string): string | null {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.length > SLUG_MAX || !SLUG_PATTERN.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}

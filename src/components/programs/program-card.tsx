@@ -1,11 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 
+import { Link } from '@/i18n/navigation';
 import { formatMoney } from '@/modules/programs/money';
 import type { PublicProgramSummary } from '@/modules/programs/types';
 
 /**
- * 목록 카드 — 프로그램 요약만 표시한다. 2A에서는 상세 페이지가 없으므로 카드에
- * 상세 링크·동작하지 않는 CTA를 두지 않는다(상세 링크는 2B에서 활성화).
+ * 목록 카드 — 프로그램 요약을 표시하고 제목을 상세(/programs/[slug])로 링크한다(2B).
+ * 접근 가능한 이름은 제목이며, 예약·문의 등 미구현 기능의 동작하지 않는 CTA는 두지 않는다.
  */
 export async function ProgramCard({
   program,
@@ -49,7 +50,9 @@ export async function ProgramCard({
           {countryName} · {cityName} · {categoryName}
         </p>
         <h3 className="mt-2 font-serif text-lg leading-snug font-semibold text-balance">
-          {program.title}
+          <Link href={`/programs/${program.slug}`} className="hover:underline">
+            {program.title}
+          </Link>
         </h3>
         <p className="text-foreground/75 mt-2 line-clamp-2 text-sm leading-relaxed">
           {program.shortDescription}

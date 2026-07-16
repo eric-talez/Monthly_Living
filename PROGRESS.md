@@ -16,7 +16,7 @@
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
 | 1D    | Verification — hermetic build·CI·audit ✅(1D-1) / Playwright E2E·최종 회귀 ✅(1D-2)         | ✅ 완료 (2026-07-15)   |
-| 2     | Public Marketplace — 공개 프로그램 목록 ✅(2A) / 상세·검색·SEO·찜 ⬜                        | 🚧 진행 중 (2A 완료)   |
+| 2     | Public Marketplace — 목록 ✅(2A) / 상세 ✅(2B) / 검색·SEO·찜 ⬜                             | 🚧 진행 중 (2B 완료)   |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
 | 5     | Booking & Payment                                                                           | ⬜ 미착수              |
@@ -711,6 +711,54 @@ APPROVED·profilePublished · User ACTIVE·미탈퇴`. 사용자 필터(country/
 **CI green**: 이 PR([#9](https://github.com/eric-talez/Monthly_Living/pull/9))의 GitHub Actions
 `verify` + `e2e` job **모두 통과**(clean checkout). Phase 2A 완료 — **draft 유지**(merge·Ready 전환
 없이 사용자 재검토 대기). Phase 2B(상세) 이후 미착수.
+
+## Phase 2B 기록 (완료, 2026-07-16)
+
+Phase 2의 두 번째 PR — **공개 프로그램 상세**(`/programs/[slug]`) vertical slice. 목록 카드에서
+상세로 이동하고 프로그램·media·전문가 공개 요약을 2A와 동일한 visibility 계약·404 no-leak으로 표시한다.
+
+**구현 내용**
+
+- `src/modules/programs/` 확장 — 상세 service `getPublicProgramBySlug`(2A `PUBLIC_PROGRAM_WHERE`
+  재사용 + slug AND; visibility 관계가 unique가 아니라 `findFirst`, slug `@unique`로 단건/`null`),
+  JSON-safe 상세 DTO(`PublicProgramDetail`/`PublicProgramMedia`/`PublicExpertSummary`,
+  Decimal→number|null), 순수 slug 파서(`parseProgramSlug`: trim·lowercase·형식·길이, malformed→null,
+  DB 조회 없음), media URL 가드(`media.ts` `isDisplayableImageUrl`: http(s)만).
+- **상세 visibility·404 no-leak 계약**: 미존재·형식오류·DRAFT/PENDING_REVIEW/UNPUBLISHED/ARCHIVED·
+  soft-deleted·inactive dest/cat·미승인/미게시 expert·SUSPENDED/DELETED/탈퇴 user가 모두 하나의
+  `null` → `notFound()`로 수렴(존재 여부·비공개 사유 미노출, 동일 404). `generateMetadata`도 비공개는
+  프로그램 title/description 없이 not-found로 수렴.
+- `/programs/[slug]` RSC 상세 — 단일 h1, ko/en chrome(Destination/Category만 Ko/En 필드), hero+grid
+  이미지(IMAGE만, plain `<img>`, VIDEO·비-http(s) URL 제외), 가격·기간·세션·인원·유형·예약방식·
+  온/오프라인·평점 요약, 설명·포함/불포함·요구사항·언어·만나는 곳·취소정책·편의속성(빈 섹션 숨김),
+  전문가 공개 요약(인증 배지·응답률/시간·평점·완료 예약, 링크·CTA 없음). 목록 카드 제목에 상세 링크 활성화.
+- request-scoped `cache()`로 `generateMetadata`·page가 상세 조회를 dedupe(유효 slug당 DB 1회,
+  형식오류 slug는 0회).
+- **route-group 재구성**: `programs/loading.tsx`(2A)의 Suspense 경계가 `[slug]`까지 감싸 `notFound()`가
+  soft-404(200)가 되므로, 목록을 `programs/(browse)/`로 옮겨 loading 경계를 목록에만 한정했다.
+  URL·목록 동작은 불변이고 상세는 실제 404를 반환한다(에러 바운더리는 `programs/error.tsx`가 공용).
+- 최소 상세 metadata(공개: title + shortDescription). 종합 SEO(canonical/hreflang/OG/sitemap)는 2D.
+
+**의도적으로 하지 않은 것 (범위 준수)**
+
+- 예약/문의/찜 CTA·Booking/Quote/결제·리뷰 목록·관련 프로그램 추천·독립 `/experts/[slug]`(→ 이후 Phase).
+- 키워드 검색·확장 facet(→ 2C), 종합 SEO/sitemap(→ 2D). VIDEO 표시·외부 video embed는 provider
+  allowlist가 없어 미표시. 언어는 원시 BCP-47 코드 표시(표시명 매핑은 후속 폴리시).
+- **schema/migration 변경 없음**(`git diff -- prisma` 무변경). 신규 dependency 없음.
+
+**검증 결과** (2026-07-16, 로컬 전부 exit 0)
+
+- install `--frozen-lockfile` · db:generate · typegen · db:validate · db:format(무변경) · format:check ·
+  typecheck · lint · `pnpm test:unit`(**269** — 기존 261 + 신규 8: slug 파서·media URL 가드) · build ·
+  db:test:prepare · `TZ=UTC pnpm test:integration`(**170** — 기존 163 + 신규 7: visibility 전 분기·
+  JSON-safe DTO·media 순서·PII no-leak) · `pnpm test:e2e`(**20 passed** — 기존 17 + 신규 3: 카드→상세→
+  목록 복귀 · DRAFT slug 404 · 미존재 404, chromium) · audit --prod(0).
+- 브라우저 실측(prod build): 공개 상세 렌더(가격·media·전문가 요약) 정상, DRAFT·미존재 direct-slug가
+  동일한 404(generic not-found, title/상태 미노출)이며 HTTP status 404 확인. E2E DB seed 보존.
+
+**CI green**: 이 PR([#10](https://github.com/eric-talez/Monthly_Living/pull/10))의 GitHub Actions
+`verify` + `e2e` job **모두 통과**(clean checkout). Phase 2B 완료 — **draft 유지**(merge·Ready 전환
+없이 사용자 재검토 대기). Phase 2C(검색·확장 facet) 이후 미착수.
 
 ## 알려진 문제
 

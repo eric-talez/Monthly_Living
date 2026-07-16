@@ -98,6 +98,62 @@
       "previous": "이전",
       "next": "다음",
       "pageInfo": "{page} / {totalPages}"
+    },
+    "detail": {
+      "backToList": "목록으로 돌아가기",
+      "mediaLabel": "프로그램 사진",
+      "imageAlt": "{title} 사진",
+      "about": "프로그램 소개",
+      "includes": "포함 사항",
+      "excludes": "불포함 사항",
+      "requirements": "준비물·참가 조건",
+      "languages": "진행 언어",
+      "meetingPoint": "만나는 곳",
+      "cancellationPolicy": "취소 정책",
+      "amenitiesHeading": "편의 정보",
+      "amenities": {
+        "petFriendly": "반려동물 동반 가능",
+        "childFriendly": "아이 동반 가능",
+        "accommodationIncluded": "숙소 포함",
+        "transportIncluded": "교통 포함"
+      },
+      "facts": {
+        "price": "가격",
+        "duration": "기간",
+        "sessions": "세션 수",
+        "maxParticipants": "최대 인원",
+        "programType": "유형",
+        "bookingType": "예약 방식",
+        "format": "진행 방식",
+        "rating": "평점"
+      },
+      "people": "{count, plural, other {최대 #명}}",
+      "offline": "현장 진행",
+      "programType": {
+        "PRIVATE": "1:1 프라이빗",
+        "GROUP": "그룹"
+      },
+      "bookingType": {
+        "INSTANT": "즉시 예약",
+        "REQUEST": "승인 후 예약"
+      },
+      "expert": {
+        "heading": "전문가 소개",
+        "identityVerified": "신원 인증 완료",
+        "credentialVerified": "자격 인증 완료",
+        "experience": "경력",
+        "years": "{count, plural, other {#년}}",
+        "languagesLabel": "가능 언어",
+        "responseRate": "응답률",
+        "percent": "{value}%",
+        "responseTime": "응답 시간",
+        "minutes": "{count, plural, other {#분 이내}}",
+        "rating": "평점",
+        "ratingValue": "★ {rating}",
+        "reviews": "{count, plural, other {리뷰 #}}",
+        "completed": "완료한 예약",
+        "completedValue": "{count, plural, other {#건}}"
+      }
     }
   },
   "onboarding": {
