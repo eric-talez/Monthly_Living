@@ -98,6 +98,62 @@
       "previous": "Previous",
       "next": "Next",
       "pageInfo": "{page} / {totalPages}"
+    },
+    "detail": {
+      "backToList": "Back to programs",
+      "mediaLabel": "Program photos",
+      "imageAlt": "{title} photo",
+      "about": "About this program",
+      "includes": "What's included",
+      "excludes": "Not included",
+      "requirements": "Requirements",
+      "languages": "Languages",
+      "meetingPoint": "Meeting point",
+      "cancellationPolicy": "Cancellation policy",
+      "amenitiesHeading": "Amenities",
+      "amenities": {
+        "petFriendly": "Pet friendly",
+        "childFriendly": "Child friendly",
+        "accommodationIncluded": "Accommodation included",
+        "transportIncluded": "Transport included"
+      },
+      "facts": {
+        "price": "Price",
+        "duration": "Duration",
+        "sessions": "Sessions",
+        "maxParticipants": "Group size",
+        "programType": "Type",
+        "bookingType": "Booking",
+        "format": "Format",
+        "rating": "Rating"
+      },
+      "people": "{count, plural, one {Up to # person} other {Up to # people}}",
+      "offline": "In person",
+      "programType": {
+        "PRIVATE": "Private (1:1)",
+        "GROUP": "Group"
+      },
+      "bookingType": {
+        "INSTANT": "Instant booking",
+        "REQUEST": "Booking on request"
+      },
+      "expert": {
+        "heading": "About the expert",
+        "identityVerified": "Identity verified",
+        "credentialVerified": "Credentials verified",
+        "experience": "Experience",
+        "years": "{count, plural, one {# year} other {# years}}",
+        "languagesLabel": "Languages",
+        "responseRate": "Response rate",
+        "percent": "{value}%",
+        "responseTime": "Response time",
+        "minutes": "{count, plural, one {within # min} other {within # min}}",
+        "rating": "Rating",
+        "ratingValue": "★ {rating}",
+        "reviews": "{count, plural, one {# review} other {# reviews}}",
+        "completed": "Completed bookings",
+        "completedValue": "{count, plural, one {# booking} other {# bookings}}"
+      }
     }
   },
   "onboarding": {
