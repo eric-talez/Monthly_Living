@@ -16,7 +16,7 @@
 | 1C-2A | Google/Kakao OAuth Identity — provider 구성, 계정 생성·연결 정책, custom adapter, UI        | ✅ 완료 (2026-07-13)\* |
 | 1C-2B | Authentication 확장 잔여 — 계정 탈퇴 ✅(1C-2B-1), 프로필 온보딩·권한별 redirect ✅(1C-2B-2) | ✅ 완료 (2026-07-14)   |
 | 1D    | Verification — hermetic build·CI·audit ✅(1D-1) / Playwright E2E·최종 회귀 ✅(1D-2)         | ✅ 완료 (2026-07-15)   |
-| 2     | Public Marketplace — 목록 ✅(2A) / 상세 🚧(2B) / 검색·SEO·찜 ⬜                             | 🚧 진행 중 (2B 구현)   |
+| 2     | Public Marketplace — 목록 ✅(2A) / 상세 ✅(2B) / 검색·SEO·찜 ⬜                             | 🚧 진행 중 (2B 완료)   |
 | 3     | Recommendation                                                                              | ⬜ 미착수              |
 | 4     | Expert Platform                                                                             | ⬜ 미착수              |
 | 5     | Booking & Payment                                                                           | ⬜ 미착수              |
@@ -712,7 +712,7 @@ APPROVED·profilePublished · User ACTIVE·미탈퇴`. 사용자 필터(country/
 `verify` + `e2e` job **모두 통과**(clean checkout). Phase 2A 완료 — **draft 유지**(merge·Ready 전환
 없이 사용자 재검토 대기). Phase 2B(상세) 이후 미착수.
 
-## Phase 2B 기록 (진행 중, 2026-07-16)
+## Phase 2B 기록 (완료, 2026-07-16)
 
 Phase 2의 두 번째 PR — **공개 프로그램 상세**(`/programs/[slug]`) vertical slice. 목록 카드에서
 상세로 이동하고 프로그램·media·전문가 공개 요약을 2A와 동일한 visibility 계약·404 no-leak으로 표시한다.
@@ -756,7 +756,9 @@ Phase 2의 두 번째 PR — **공개 프로그램 상세**(`/programs/[slug]`) 
 - 브라우저 실측(prod build): 공개 상세 렌더(가격·media·전문가 요약) 정상, DRAFT·미존재 direct-slug가
   동일한 404(generic not-found, title/상태 미노출)이며 HTTP status 404 확인. E2E DB seed 보존.
 
-**CI**: draft PR 생성 후 GitHub Actions `verify`+`e2e` 확인 예정(green 확인 후 본 절을 완료로 갱신).
+**CI green**: 이 PR([#10](https://github.com/eric-talez/Monthly_Living/pull/10))의 GitHub Actions
+`verify` + `e2e` job **모두 통과**(clean checkout). Phase 2B 완료 — **draft 유지**(merge·Ready 전환
+없이 사용자 재검토 대기). Phase 2C(검색·확장 facet) 이후 미착수.
 
 ## 알려진 문제
 
